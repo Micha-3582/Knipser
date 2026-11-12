@@ -111,6 +111,7 @@
         <Border DockPanel.Dock="Bottom" Background="#262626" Padding="10,4">
             <TextBlock x:Name="Status" Foreground="#AAAAAA" FontSize="12"/>
         </Border>
+        <Grid>
         <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                       Background="#121212" PreviewMouseWheel="Scroller_Wheel">
             <Grid x:Name="Host" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20">
@@ -122,5 +123,7 @@
                 <Canvas x:Name="Sel"/>
             </Grid>
         </ScrollViewer>
+        <StackPanel x:Name="CropBar" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0"/>
+        </Grid>
     </DockPanel>
 </Window>

@@ -169,8 +169,7 @@ public partial class EditorWindow : Window
         cropApplyBtn.Click += (_, _) => ApplyCropNow();
         cropCancelBtn = new Button { Content = "Abbrechen", Visibility = Visibility.Collapsed, Margin = new Thickness(2, 1, 2, 1), Padding = new Thickness(8, 3, 8, 3) };
         cropCancelBtn.Click += (_, _) => CancelCrop();
-        var cropStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        cropStack.Children.Add(cropApplyBtn); cropStack.Children.Add(cropCancelBtn);
+        CropBar.Children.Add(cropApplyBtn); CropBar.Children.Add(cropCancelBtn);   // schweben über dem Bild: das Menüband bleibt ruhig
 
         (string label, Tool t, UIElement icon)[] tools =
         {
@@ -203,7 +202,6 @@ public partial class EditorWindow : Window
             toolButtons[t] = rb;
             (t == Tool.Crop ? bildGroup : toolGroup).Add(rb);
         }
-        bildGroup.Add(cropStack);
 
         panels["Start"].Children.Add(Group("Bild", bildGroup.ToArray()));
         panels["Start"].Children.Add(Group("Werkzeuge", toolGroup.ToArray()));
@@ -213,6 +211,7 @@ public partial class EditorWindow : Window
         slider.ValueChanged += (_, e) =>
         {
             if (syncing) return;
+            if (editBox != null) { thick = e.NewValue; editBox.FontSize = 14 + thick * 2; return; }
             if (selected != null && ApplyThickness(selected, e.NewValue)) { UpdateSel(); return; }
             thick = e.NewValue;
         };
@@ -232,7 +231,8 @@ public partial class EditorWindow : Window
             sw.MouseLeftButtonDown += (_, _) =>
             {
                 color = c;
-                if (selected != null) ApplyColor(selected, c);
+                if (editBox != null) { editBox.Foreground = Brush(); editBox.CaretBrush = Brush(); }   // Text wird gerade geschrieben
+                else if (selected != null) ApplyColor(selected, c);
                 foreach (var s2 in swatches) s2.BorderBrush = Brushes.Transparent;
                 sw.BorderBrush = Brushes.White;
             };
@@ -335,13 +335,16 @@ public partial class EditorWindow : Window
     // ---------- Zeichnen ----------
     void Art_Down(object sender, MouseButtonEventArgs e)
     {
+        bool wasEditing = editBox != null;
         CommitText();
+        if (wasEditing && tool == Tool.Text) toolButtons[Tool.Pointer].IsChecked = true;   // Klick neben den Text: Text fertig, Auswahl aktiv
         Art.Focus();
         p0 = e.GetPosition(Art);
         shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
         if (cropMode) { CropDown(p0); return; }
 
         var hit = FindEl(e.OriginalSource);
+        if (tool == Tool.Pointer && e.ClickCount == 2 && hit is TextBlock tbHit) { StartEdit(tbHit); return; }
         if (tool == Tool.Pointer || Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
             dragEl = hit;
@@ -487,6 +490,7 @@ public partial class EditorWindow : Window
     int activeHandle = -1;
     Rect rectBefore;
     LineInfo? lineBefore;
+    Rect textRect0; double textFs0;
 
     static bool IsRectLike(UIElement e) => e is Rectangle || e is Ellipse || e is Image;
 
@@ -606,7 +610,7 @@ public partial class EditorWindow : Window
             StrokeDashArray = new DoubleCollection { 3, 3 }, IsHitTestVisible = false,
         };
         Sel.Children.Add(selBox);
-        int n = IsRectLike(selected) ? 4 : selected is Path { Tag: LineInfo } ? 2 : 0;
+        int n = IsRectLike(selected) || selected is TextBlock ? 4 : selected is Path { Tag: LineInfo } ? 2 : 0;
         for (int i = 0; i < n; i++)
         {
             var h = MakeHandle(i);
@@ -627,6 +631,7 @@ public partial class EditorWindow : Window
             if (selected == null) return;
             activeHandle = idx;
             if (IsRectLike(selected)) rectBefore = LocalRect(selected);
+            else if (selected is TextBlock stb) { textRect0 = new Rect(Canvas.GetLeft(stb), Canvas.GetTop(stb), stb.ActualWidth, stb.ActualHeight); textFs0 = stb.FontSize; }
             else if (selected is Path { Tag: LineInfo li }) lineBefore = new LineInfo { A = li.A, B = li.B, Arrow = li.Arrow };
             h.CaptureMouse();
             e.Handled = true;
@@ -662,6 +667,7 @@ public partial class EditorWindow : Window
         var t = GetT(selected);
         Point[]? pts = null;
         if (IsRectLike(selected)) pts = Corners(LocalRect(selected));
+        else if (selected is TextBlock ptb) pts = Corners(new Rect(Canvas.GetLeft(ptb), Canvas.GetTop(ptb), ptb.ActualWidth, ptb.ActualHeight));
         else if (selected is Path { Tag: LineInfo li }) pts = new[] { li.A, li.B };
         if (pts == null) return;
         for (int i = 0; i < handles.Count && i < pts.Length; i++)
@@ -684,6 +690,17 @@ public partial class EditorWindow : Window
             var nr = new Rect(lp, opp);
             if (nr.Width < 4 || nr.Height < 4) return;
             SetRect(selected, nr);
+        }
+        else if (selected is TextBlock tb)
+        {
+            // Schrift proportional mit den Eckanfassern vergrößern/verkleinern (gegenüberliegende Ecke bleibt stehen)
+            var r0 = textRect0; int o = (i + 2) % 4; var opp = Corners(r0)[o];
+            double sc = Math.Max(Math.Abs(lp.X - opp.X) / Math.Max(r0.Width, 1), Math.Abs(lp.Y - opp.Y) / Math.Max(r0.Height, 1));
+            tb.FontSize = Math.Clamp(textFs0 * Math.Max(sc, 0.05), 8, 1000);
+            tb.UpdateLayout();
+            Canvas.SetLeft(tb, (o == 0 || o == 3) ? opp.X : opp.X - tb.ActualWidth);
+            Canvas.SetTop(tb, (o == 0 || o == 1) ? opp.Y : opp.Y - tb.ActualHeight);
+            PositionSel();
         }
         else if (selected is Path path && path.Tag is LineInfo li)
         {
@@ -716,6 +733,13 @@ public partial class EditorWindow : Window
         {
             var before = rectBefore; var after = LocalRect(el);
             if (before != after) Push(() => SetRect(el, before), () => SetRect(el, after));
+        }
+        else if (el is TextBlock tb)
+        {
+            var fs0 = textFs0; var l0 = textRect0.X; var t0 = textRect0.Y;
+            double fs1 = tb.FontSize, l1 = Canvas.GetLeft(tb), t1 = Canvas.GetTop(tb);
+            void Set(double fs, double l, double t) { tb.FontSize = fs; Canvas.SetLeft(tb, l); Canvas.SetTop(tb, t); tb.UpdateLayout(); PositionSel(); }
+            if (fs0 != fs1) Push(() => Set(fs0, l0, t0), () => Set(fs1, l1, t1));
         }
         else if (el is Path path && path.Tag is LineInfo li && lineBefore != null)
         {
@@ -774,7 +798,34 @@ public partial class EditorWindow : Window
         Art.Children.Add(tb);
         editBox = tb;
         Dispatcher.BeginInvoke(new Action(() => tb.Focus()), System.Windows.Threading.DispatcherPriority.Input);
-        tb.PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { CommitText(); e.Handled = true; } };
+        tb.PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { CommitText(); toolButtons[Tool.Pointer].IsChecked = true; e.Handled = true; } };
+    }
+
+    // vorhandenen Text per Doppelklick erneut bearbeiten
+    TextBlock? editOrig;
+    int editIdx;
+    (string text, Brush fg, double fs, double l, double t, double tx, double ty) editOld;
+
+    void StartEdit(TextBlock t)
+    {
+        CommitText();
+        Select(null);
+        var tr = GetT(t);
+        editOld = (t.Text, t.Foreground, t.FontSize, Canvas.GetLeft(t), Canvas.GetTop(t), tr.X, tr.Y);
+        var tb = new TextBox
+        {
+            Text = t.Text, FontSize = t.FontSize, FontWeight = t.FontWeight, Foreground = t.Foreground, CaretBrush = t.Foreground,
+            Background = new SolidColorBrush(Color.FromArgb(0x22, 255, 255, 255)), BorderBrush = Brushes.White,
+            BorderThickness = new Thickness(1), AcceptsReturn = true, MinWidth = 80, Padding = new Thickness(2),
+        };
+        Canvas.SetLeft(tb, editOld.l + tr.X); Canvas.SetTop(tb, editOld.t + tr.Y);
+        editIdx = Art.Children.IndexOf(t);
+        Art.Children.Remove(t);
+        editOrig = t;
+        Art.Children.Add(tb);
+        editBox = tb;
+        Dispatcher.BeginInvoke(new Action(() => { tb.Focus(); tb.SelectAll(); }), System.Windows.Threading.DispatcherPriority.Input);
+        tb.PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { CommitText(); toolButtons[Tool.Pointer].IsChecked = true; e.Handled = true; } };
     }
 
     void CommitText()
@@ -785,6 +836,32 @@ public partial class EditorWindow : Window
         int idx = Art.Children.IndexOf(tb);
         if (idx < 0) return;
         Art.Children.RemoveAt(idx);
+        if (editOrig != null)
+        {
+            var ot = editOrig; editOrig = null;
+            var o = editOld; int at = Math.Min(editIdx, Art.Children.Count);
+            if (string.IsNullOrWhiteSpace(tb.Text))
+            {
+                // leer gelassen = Text gelöscht
+                Push(() => { Art.Children.Insert(Math.Min(at, Art.Children.Count), ot); }, () => Art.Children.Remove(ot));
+                Select(null);
+                return;
+            }
+            string nt = tb.Text; Brush nfg = tb.Foreground; double nfs = tb.FontSize;
+            double nl = Canvas.GetLeft(tb), ntp = Canvas.GetTop(tb);
+            void Apply(string text, Brush fg, double fs, double l, double t, double tx, double ty)
+            {
+                ot.Text = text; ot.Foreground = fg; ot.FontSize = fs;
+                Canvas.SetLeft(ot, l); Canvas.SetTop(ot, t);
+                var tr = GetT(ot); tr.X = tx; tr.Y = ty;
+                if (!Art.Children.Contains(ot)) Art.Children.Insert(Math.Min(at, Art.Children.Count), ot);
+                RefreshSel();
+            }
+            Apply(nt, nfg, nfs, nl, ntp, 0, 0);
+            Push(() => Apply(o.text, o.fg, o.fs, o.l, o.t, o.tx, o.ty), () => Apply(nt, nfg, nfs, nl, ntp, 0, 0));
+            Select(ot);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(tb.Text)) return;
         var t = new TextBlock
         {
