@@ -58,6 +58,7 @@ internal class RulerWindow : Window
     public RulerWindow()
     {
         Title = "Knipser Lineal";
+        Icon = App.WindowIcon;
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         ResizeMode = ResizeMode.NoResize; ShowInTaskbar = false; Topmost = true;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;

@@ -10,8 +10,13 @@
     <AssemblyName>Knipser</AssemblyName>
     <RootNamespace>Knipser</RootNamespace>
     <NoWarn>WFAC010</NoWarn>
-    <Version>1.1.0</Version>
+    <ApplicationIcon>Knipser.ico</ApplicationIcon>
+    <Version>1.2.0</Version>
     <SatelliteResourceLanguages>de</SatelliteResourceLanguages>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Knipser.ico" />
+  </ItemGroup>
 </Project>
+
 

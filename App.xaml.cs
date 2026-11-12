@@ -176,7 +176,22 @@ public partial class App : Application
         tray.MouseDoubleClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) CaptureRegion(); };
     }
 
+    /// <summary>Fenster-Symbol (Editor, Einstellungen).</summary>
+    public static System.Windows.Media.ImageSource WindowIcon { get; } =
+        BitmapFrame.Create(new Uri("pack://application:,,,/Knipser.ico"));
+
     static Icon MakeIcon()
+    {
+        try
+        {
+            var sr = GetResourceStream(new Uri("pack://application:,,,/Knipser.ico"));
+            if (sr != null) return new Icon(sr.Stream, Forms.SystemInformation.SmallIconSize);
+        }
+        catch { }
+        return MakeFallbackIcon();
+    }
+
+    static Icon MakeFallbackIcon()
     {
         using var bmp = new Bitmap(32, 32);
         using (var g = Graphics.FromImage(bmp))

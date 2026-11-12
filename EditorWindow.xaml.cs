@@ -41,6 +41,7 @@ public partial class EditorWindow : Window
     public EditorWindow(BitmapSource image, Settings settings)
     {
         InitializeComponent();
+        Icon = App.WindowIcon;
         this.settings = settings;
         bmp = image;
         Art.Children.Add(baseImg);

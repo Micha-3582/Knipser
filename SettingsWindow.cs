@@ -72,6 +72,7 @@ internal class SettingsWindow : Window
     {
         s = settings; this.app = app;
         Title = "Knipser – Einstellungen";
+        Icon = App.WindowIcon;
         Width = 560; SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
