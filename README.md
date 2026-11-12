@@ -1,17 +1,20 @@
 ﻿# Knipser
 
-Schlankes Screenshot-Programm fÃ¼r Windows (C#, WPF, .NET 8) â€“ ohne Werbung, ohne Update-Nerverei.
+Schlankes Screenshot-Programm für Windows (C#, WPF, .NET 8) – ohne Werbung, ohne Update-Nerverei.
 
 ## Funktionen
-- Aufnahme per TastenkÃ¼rzel: Bereich, Vollbild (alle Monitore), Fenster, scrollende Aufnahme
-- Editor: Pfeil, Linie, Rahmen, Ellipse, Stift, Marker, Text, Nummern, Verpixeln, Zuschneiden
-- Speichern als JPG oder PNG, automatisch beim SchlieÃŸen des Editors (abschaltbar)
-- Alle TastenkÃ¼rzel frei einstellbar, Autostart, eigener Speicherordner
-- Updates Ã¼ber GitHub: Eintrag im Tray-MenÃ¼ bzw. Einstellungen â†’ â€žNach Updates suchenâ€œ
+- Aufnahme per Tastenkürzel: Bereich, Vollbild (alle Monitore), Fenster, scrollende Aufnahme
+- Editor: Pfeil, Linie, Rahmen, Ellipse, Stift, Marker, Text, Nummern, Verpixeln, Zuschneiden; Elemente lassen sich nachträglich verschieben und in der Größe ändern
+- Farbpipette, Lupe und Lineal
+- Speichern als JPG oder PNG, automatisch beim Schließen des Editors (abschaltbar)
+- Alle Tastenkürzel frei einstellbar, Autostart, eigener Speicherordner
+- Updates über GitHub: Eintrag im Tray-Menü bzw. Einstellungen → „Nach Updates suchen“
 
 ## Installation
 Voraussetzung: [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0).
+
 Aus dem neuesten [Release](../../releases/latest) `Knipser-Setup-X.Y.Z.exe` herunterladen und ausführen. Das Setup installiert Knipser pro Benutzer (ohne Administratorrechte), legt einen Startmenü-Eintrag an und richtet auf Wunsch den Autostart ein. Alternativ gibt es `Knipser.exe` als portable Einzeldatei.
+
 Das Programm läuft im Tray. Standard: `PrintScreen` Bereich, `Strg+PrintScreen` Vollbild, `Alt+PrintScreen` Fenster, `Strg+Umschalt+PrintScreen` scrollende Aufnahme, `Strg+Umschalt+F10/F11/F12` Farbpipette/Lupe/Lineal.
 
 ## Selbst bauen
@@ -19,10 +22,9 @@ Das Programm läuft im Tray. Standard: `PrintScreen` Bereich, `Strg+PrintScreen`
 dotnet build -c Release
 ```
 
-## Release verÃ¶ffentlichen
+## Release veröffentlichen
+`<Version>` in `Knipser.csproj` hochzählen, dann `tools\build-release.ps1` ausführen (Inno Setup 6 nötig). Das Skript baut die Einzeldatei und das Setup und legt beide versioniert unter `K:\Claude Projekte\Knipser-Versionen\` ab, ohne etwas zu überschreiben. Danach:
 ```
-dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
-gh release create vX.Y.Z publish/Knipser.exe --title "Knipser X.Y.Z" --notes "..."
+gh release create vX.Y.Z publish/Knipser.exe "K:\Claude Projekte\Knipser-Versionen\Knipser-Setup-X.Y.Z.exe"
 ```
-Vorher `<Version>` in `Knipser.csproj` hochzÃ¤hlen.
-
+Das Asset `Knipser.exe` braucht die eingebaute Update-Funktion.
