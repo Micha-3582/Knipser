@@ -137,6 +137,14 @@ internal class ColorPickerWindow : Window
             var c = (Color)ColorConverter.ConvertFromString(hx);
             presetPanel.Children.Add(Dot(c, hx, () => SetNewColor(c)));
         }
+        var sample = new ComboBox { Width = 190, Margin = new Thickness(0, 0, 0, 0) };
+        int[] sizes = { 1, 3, 5, 11, 31 };
+        foreach (var n in sizes) sample.Items.Add(n == 1 ? "1 Pixel" : $"Durchschnitt {n} × {n} Pixel");
+        sample.SelectedIndex = Math.Max(0, Array.IndexOf(sizes, settings.PickSample));
+        sample.SelectionChanged += (_, _) => { if (sample.SelectedIndex >= 0) { settings.PickSample = sizes[sample.SelectedIndex]; settings.Save(); } };
+        var sampleRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        sampleRow.Children.Add(new TextBlock { Text = "Pipette nimmt", Width = 96, VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.Gray });
+        sampleRow.Children.Add(sample);
         var addBtn = new Button { Content = "Aktuelle Farbe in ein freies Feld speichern", Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
         addBtn.Click += (_, _) => AddCustom(Current);
         BuildCustom();
@@ -155,6 +163,7 @@ internal class ColorPickerWindow : Window
         root.Children.Add(Head("Eigene Farben"));
         root.Children.Add(customPanel);
         root.Children.Add(addBtn);
+        root.Children.Add(sampleRow);
         root.Children.Add(new TextBlock { Text = "Tipp: Mit der Maus ins Bild fahren und klicken, um dort eine Farbe aufzunehmen.", Foreground = Brushes.Gray, FontSize = 11, Margin = new Thickness(0, 10, 0, 0), TextWrapping = TextWrapping.Wrap, MaxWidth = 400 });
         root.Children.Add(btns);
         Content = root;
@@ -216,6 +225,20 @@ internal class ColorPickerWindow : Window
         settings.Save();
         BuildCustom();
     }
+
+    // ---------- Live-Vorschau (Maus über dem Bild) ----------
+    /// <summary>Zeigt die Farbe unter dem Mauszeiger im großen „neu“-Feld, ohne sie schon zu übernehmen.</summary>
+    public void ShowPreview(Color c)
+    {
+        newBox.Background = new SolidColorBrush(c);
+        busy = true;
+        hex.Text = $"{c.R:X2}{c.G:X2}{c.B:X2}";
+        tr.Text = c.R.ToString(); tg.Text = c.G.ToString(); tb.Text = c.B.ToString();
+        busy = false;
+    }
+
+    /// <summary>Zurück zur tatsächlich gewählten Farbe, wenn die Maus das Bild verlässt.</summary>
+    public void ClearPreview() => Update(null);
 
     // ---------- Farbe setzen ----------
     /// <summary>Neue Farbe von außen setzen (z. B. aus dem Bild aufgenommen).</summary>

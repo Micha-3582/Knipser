@@ -355,6 +355,50 @@ public partial class EditorWindow : Window
         cpWin.Show();
     }
 
+    static readonly int[] PickSizes = { 1, 3, 5, 11, 31 };
+
+    Button MakePipetteButton()
+    {
+        var btn = BigBtn(WithCorner(PipetteIcon(32)), "Pipette", (_, _) => StartPick(),
+            "Pipette: Farbe direkt aus dem Bild aufnehmen (Esc = abbrechen). Ecke, langer Druck oder Rechtsklick: Aufnahmebereich");
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        timer.Tick += (_, _) => { timer.Stop(); ShowPickMenu(btn); };
+        btn.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            var pos = e.GetPosition(btn);
+            if (pos.X > btn.ActualWidth - 22 && pos.Y < 38) { ShowPickMenu(btn); e.Handled = true; return; }
+            timer.Start();
+        };
+        btn.PreviewMouseLeftButtonUp += (_, _) => timer.Stop();
+        btn.MouseLeave += (_, _) => timer.Stop();
+        btn.MouseRightButtonUp += (_, e) => { ShowPickMenu(btn); e.Handled = true; };
+        return btn;
+    }
+
+    void ShowPickMenu(FrameworkElement target)
+    {
+        var pop = new Popup { PlacementTarget = target, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true };
+        var panel = new StackPanel();
+        panel.Children.Add(new TextBlock { Text = "Pipette nimmt", Foreground = new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99)), FontSize = 11, Margin = new Thickness(8, 4, 8, 4) });
+        foreach (int n in PickSizes)
+        {
+            int size = n;
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock { Text = size == Math.Max(1, settings.PickSample) ? "\u2713" : "", Foreground = Ink, Width = 16, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = size == 1 ? "1 Pixel" : $"Durchschnitt {size} × {size} Pixel", Foreground = Ink, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0), MinWidth = 160 });
+            var b = new Button { Content = row, Style = (Style)FindResource("RibbonBtn"), HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(6, 3, 6, 3) };
+            b.Click += (_, _) => { settings.PickSample = size; settings.Save(); pop.IsOpen = false; };
+            panel.Children.Add(b);
+        }
+        pop.Child = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(3), Child = panel,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5 },
+        };
+        pop.IsOpen = true;
+    }
+
     void StartPick()
     {
         CommitText();
@@ -366,6 +410,7 @@ public partial class EditorWindow : Window
     void EndPick()
     {
         picking = false;
+        if (colorBox != null) colorBox.Background = new SolidColorBrush(color);
         Art.Cursor = cpWin != null ? PipetteCursor() : tool == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
         Status.Text = $"{bmp.PixelWidth} × {bmp.PixelHeight} px";
     }
@@ -374,12 +419,19 @@ public partial class EditorWindow : Window
     {
         int x = (int)Math.Floor(p.X), y = (int)Math.Floor(p.Y);
         if (x < 0 || y < 0 || x >= bmp.PixelWidth || y >= bmp.PixelHeight) return null;
+        int n = Math.Max(1, settings.PickSample), half = n / 2;
+        int x0 = Math.Max(0, x - half), y0 = Math.Max(0, y - half);
+        int x1 = Math.Min(bmp.PixelWidth - 1, x + half), y1 = Math.Min(bmp.PixelHeight - 1, y + half);
+        int w = x1 - x0 + 1, h = y1 - y0 + 1;
         try
         {
-            var one = new FormatConvertedBitmap(new CroppedBitmap(bmp, new Int32Rect(x, y, 1, 1)), PixelFormats.Bgra32, null, 0);
-            var px = new byte[4];
-            one.CopyPixels(px, 4, 0);
-            return Color.FromRgb(px[2], px[1], px[0]);
+            var area = new FormatConvertedBitmap(new CroppedBitmap(bmp, new Int32Rect(x0, y0, w, h)), PixelFormats.Bgra32, null, 0);
+            var px = new byte[w * h * 4];
+            area.CopyPixels(px, w * 4, 0);
+            long rs = 0, gs = 0, bs = 0;
+            for (int i = 0; i < w * h; i++) { bs += px[i * 4]; gs += px[i * 4 + 1]; rs += px[i * 4 + 2]; }
+            int cnt = w * h;
+            return Color.FromRgb((byte)Math.Round(rs / (double)cnt), (byte)Math.Round(gs / (double)cnt), (byte)Math.Round(bs / (double)cnt));
         }
         catch { return null; }
     }
@@ -463,6 +515,11 @@ public partial class EditorWindow : Window
 
     void BuildToolbar()
     {
+        Art.MouseLeave += (_, _) =>
+        {
+            cpWin?.ClearPreview();
+            if (picking && colorBox != null) colorBox.Background = new SolidColorBrush(color);
+        };
         var panels = new Dictionary<string, StackPanel>();
 
         // --- Kopfzeile: Schnellzugriff + Reiter ---
@@ -597,7 +654,7 @@ public partial class EditorWindow : Window
             BorderBrush = new SolidColorBrush(Color.FromRgb(0xDD, 0xDD, 0xDD)), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 0),
         };
         panels["Start"].Children.Add(Group("Farben",
-            BigBtn(PipetteIcon(32), "Pipette", (_, _) => StartPick(), "Pipette: Farbe direkt aus dem Bild aufnehmen (Esc = abbrechen)"),
+            MakePipetteButton(),
             BigBtn(colorBox, "Farbe", (_, _) => ShowColorPicker(), "Farbwähler öffnen: Vorgaben, Spektrum und eigene Farben")));
 
         // --- Reiter Ansicht ---
@@ -784,6 +841,11 @@ public partial class EditorWindow : Window
         var p = e.GetPosition(Art);
         if (picking || cpWin != null)
         {
+            if (SampleAt(p) is Color lc)
+            {
+                if (cpWin != null) cpWin.ShowPreview(lc);
+                else if (colorBox != null) colorBox.Background = new SolidColorBrush(lc);   // Pipette-Modus: Farbfeld zeigt live die Farbe unter dem Zeiger
+            }
             if (SampleAt(p) is Color hc) Status.Text = cpWin != null ? $"Farbe unter dem Zeiger: #{hc.R:X2}{hc.G:X2}{hc.B:X2}   (Klick = in den Farbwähler übernehmen)" : $"Pipette: #{hc.R:X2}{hc.G:X2}{hc.B:X2}   (Klick = übernehmen, Esc = abbrechen)";
             return;
         }

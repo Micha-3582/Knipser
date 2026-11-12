@@ -49,6 +49,8 @@ public class Settings
     public int SoftenEdge { get; set; } = 0;
     /// <summary>Eigene Farbfelder im Farbwähler (8 Plätze, leer = frei), als #RRGGBB.</summary>
     public List<string> CustomColors { get; set; } = new();
+    /// <summary>Pipette: Aufnahmebereich in Pixeln (1 = ein Pixel, 3/5/11/31 = Durchschnitt über n × n Pixel).</summary>
+    public int PickSample { get; set; } = 1;
     public bool OpenEditor { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
     /// <summary>Editor schließen speichert das Bild automatisch (wie bei PicPick).</summary>
