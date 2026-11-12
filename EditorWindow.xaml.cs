@@ -258,6 +258,61 @@ public partial class EditorWindow : Window
         img.OpacityMask = new ImageBrush(mask) { Stretch = Stretch.Fill };
     }
 
+    // ---------- Pipette ----------
+    bool picking;
+    Border? customSwatch;
+    Color? customColor;
+
+    /// <summary>Farbe als aktuelle Farbe setzen (färbt auch das ausgewählte Element bzw. den gerade geschriebenen Text).</summary>
+    void SetColor(Color c)
+    {
+        color = c;
+        if (editBox != null) { editBox.Foreground = Brush(); editBox.CaretBrush = Brush(); }
+        else if (selected != null) ApplyColor(selected, c);
+        foreach (var sw in swatches) sw.BorderBrush = Brushes.Transparent;
+        if (customSwatch != null)
+        {
+            bool isPalette = false;
+            foreach (var sw in swatches) if (sw != customSwatch && sw.Background is SolidColorBrush b && b.Color == c) { sw.BorderBrush = Brushes.White; isPalette = true; }
+            if (!isPalette)
+            {
+                customColor = c;
+                customSwatch.Background = new SolidColorBrush(c);
+                customSwatch.BorderBrush = Brushes.White;
+            }
+            else if (customColor == null) customSwatch.BorderBrush = new SolidColorBrush(Color.FromRgb(0x77, 0x77, 0x77));
+        }
+    }
+
+    void StartPick()
+    {
+        CommitText();
+        picking = true;
+        Art.Cursor = Cursors.Cross;
+        Status.Text = "Pipette: in das Bild klicken, um die Farbe zu übernehmen (Esc = abbrechen).";
+    }
+
+    void EndPick()
+    {
+        picking = false;
+        Art.Cursor = tool == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
+        Status.Text = $"{bmp.PixelWidth} × {bmp.PixelHeight} px";
+    }
+
+    Color? SampleAt(Point p)
+    {
+        int x = (int)Math.Floor(p.X), y = (int)Math.Floor(p.Y);
+        if (x < 0 || y < 0 || x >= bmp.PixelWidth || y >= bmp.PixelHeight) return null;
+        try
+        {
+            var one = new FormatConvertedBitmap(new CroppedBitmap(bmp, new Int32Rect(x, y, 1, 1)), PixelFormats.Bgra32, null, 0);
+            var px = new byte[4];
+            one.CopyPixels(px, 4, 0);
+            return Color.FromRgb(px[2], px[1], px[0]);
+        }
+        catch { return null; }
+    }
+
     // ---------- Pfeil-Untermenü (Ecke am Symbol, langer Druck oder Rechtsklick) ----------
     Path? arrowPrev;
     static readonly string[] ArrowNames = { "Klassisch", "Spitz", "Offen", "Modern", "Punkt" };
@@ -466,7 +521,7 @@ public partial class EditorWindow : Window
         panels["Start"].Children.Add(Group("Stärke", new Border { Padding = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, Child = slider }));
 
         var palette = new[] { "#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#000000", "#FFFFFF" };
-        var grid = new UniformGrid { Rows = 2, Columns = 4, VerticalAlignment = VerticalAlignment.Center };
+        var grid = new UniformGrid { Rows = 2, Columns = 5, VerticalAlignment = VerticalAlignment.Center };
         foreach (var hex in palette)
         {
             var c = (Color)ColorConverter.ConvertFromString(hex);
@@ -487,6 +542,25 @@ public partial class EditorWindow : Window
             swatches.Add(sw);
             grid.Children.Add(sw);
         }
+        // eigene Farbe (aus der Pipette) und Pipette
+        customSwatch = new Border
+        {
+            Width = 22, Height = 22, Margin = new Thickness(3), CornerRadius = new CornerRadius(11), BorderThickness = new Thickness(2), Cursor = Cursors.Hand,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x77, 0x77, 0x77)), Background = Brushes.Transparent, ToolTip = "Zuletzt mit der Pipette gewählte Farbe",
+        };
+        customSwatch.MouseLeftButtonDown += (_, _) => { if (customColor is Color cc) SetColor(cc); };
+        swatches.Add(customSwatch);
+        grid.Children.Add(customSwatch);
+        var pipBtn = new Border
+        {
+            Width = 28, Height = 28, Margin = new Thickness(0), CornerRadius = new CornerRadius(14), Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
+            Cursor = Cursors.Hand, ToolTip = "Pipette: Farbe aus dem Bild aufnehmen (Esc = abbrechen)",
+            Child = new Viewbox { Width = 22, Height = 22, Child = Geo("M5,19 L4,22 L7,21 L18,10 L14,6 Z M14,6 L16.5,3.5 A2.1,2.1 0 0 1 20.5,7.5 L18,10") },
+        };
+        pipBtn.MouseEnter += (_, _) => pipBtn.Background = new SolidColorBrush(Color.FromRgb(0x5A, 0x5A, 0x5A));
+        pipBtn.MouseLeave += (_, _) => pipBtn.Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44));
+        pipBtn.MouseLeftButtonDown += (_, _) => StartPick();
+        grid.Children.Add(pipBtn);
         panels["Start"].Children.Add(Group("Farben", grid));
 
         // --- Reiter Ansicht ---
@@ -583,6 +657,13 @@ public partial class EditorWindow : Window
     // ---------- Zeichnen ----------
     void Art_Down(object sender, MouseButtonEventArgs e)
     {
+        if (picking)
+        {
+            if (SampleAt(e.GetPosition(Art)) is Color pc) SetColor(pc);
+            EndPick();
+            e.Handled = true;
+            return;
+        }
         bool wasEditing = editBox != null;
         CommitText();
         if (wasEditing && tool == Tool.Text) toolButtons[Tool.Pointer].IsChecked = true;   // Klick neben den Text: Text fertig, Auswahl aktiv
@@ -658,6 +739,11 @@ public partial class EditorWindow : Window
     void Art_Move(object sender, MouseEventArgs e)
     {
         var p = e.GetPosition(Art);
+        if (picking)
+        {
+            if (SampleAt(p) is Color hc) Status.Text = $"Pipette: #{hc.R:X2}{hc.G:X2}{hc.B:X2}   (Klick = übernehmen, Esc = abbrechen)";
+            return;
+        }
         if (cropDrag >= 8) { CropMove(p); return; }
         if (dragEl != null)
         {
@@ -1862,6 +1948,7 @@ public partial class EditorWindow : Window
     // ---------- Tastatur ----------
     void OnKey(object sender, KeyEventArgs e)
     {
+        if (picking && e.Key == Key.Escape) { EndPick(); e.Handled = true; return; }
         if (Keyboard.FocusedElement is TextBox) return;
         if (cropMode && e.Key == Key.Enter) { ApplyCropNow(); e.Handled = true; return; }
         if (cropMode && e.Key == Key.Escape) { CancelCrop(); e.Handled = true; return; }
