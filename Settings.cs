@@ -29,12 +29,19 @@ public class Settings
 
     public static Settings Load()
     {
-        try
+        if (File.Exists(FilePath))
         {
-            if (File.Exists(FilePath))
+            try
+            {
                 return JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings();
+            }
+            catch
+            {
+                // Datei kaputt: nie stillschweigend überschreiben, sondern sichern
+                try { File.Copy(FilePath, FilePath + ".defekt", true); } catch { }
+                return new Settings();
+            }
         }
-        catch { }
         var s = new Settings();
         s.Save();
         return s;
@@ -45,7 +52,9 @@ public class Settings
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            var tmp = FilePath + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            File.Move(tmp, FilePath, true);   // atomar: nie eine halb geschriebene Datei
         }
         catch { }
     }

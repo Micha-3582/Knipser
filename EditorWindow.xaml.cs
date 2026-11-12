@@ -82,9 +82,23 @@ public partial class EditorWindow : Window
         {
             var rb = new RadioButton { Content = name, GroupName = "tools", IsChecked = t == tool };
             var tt = t;
-            rb.Checked += (_, _) => { CommitText(); tool = tt; Art.Cursor = tt == Tool.Pointer ? Cursors.Arrow : Cursors.Cross; };
+            rb.Checked += (_, _) =>
+            {
+                CommitText();
+                if (cropMode && tt != Tool.Crop) EndCrop();
+                tool = tt;
+                Art.Cursor = tt == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
+                if (tt == Tool.Crop) StartCrop();
+            };
+            toolButtons[t] = rb;
             Bar.Children.Add(rb);
         }
+        cropApplyBtn = new Button { Content = "Zuschnitt anwenden", Background = new SolidColorBrush(Color.FromRgb(0x2E, 0x7D, 0x32)), Visibility = Visibility.Collapsed };
+        cropApplyBtn.Click += (_, _) => ApplyCropNow();
+        cropCancelBtn = new Button { Content = "Abbrechen", Visibility = Visibility.Collapsed };
+        cropCancelBtn.Click += (_, _) => CancelCrop();
+        Bar.Children.Add(cropApplyBtn);
+        Bar.Children.Add(cropCancelBtn);
         AddSep();
         var palette = new[] { "#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#000000", "#FFFFFF" };
         foreach (var hex in palette)
@@ -218,6 +232,7 @@ public partial class EditorWindow : Window
         Art.Focus();
         p0 = e.GetPosition(Art);
         shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+        if (cropMode) { CropDown(p0); return; }
 
         var hit = FindEl(e.OriginalSource);
         if (tool == Tool.Pointer || Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
@@ -272,6 +287,7 @@ public partial class EditorWindow : Window
     void Art_Move(object sender, MouseEventArgs e)
     {
         var p = e.GetPosition(Art);
+        if (cropDrag >= 8) { CropMove(p); return; }
         if (dragEl != null)
         {
             var t = GetT(dragEl);
@@ -308,6 +324,7 @@ public partial class EditorWindow : Window
     void Art_Up(object sender, MouseButtonEventArgs e)
     {
         Art.ReleaseMouseCapture();
+        if (cropDrag >= 8) { CropUp(); return; }
         if (dragEl != null)
         {
             var el = dragEl; var t = GetT(el);
@@ -387,6 +404,7 @@ public partial class EditorWindow : Window
 
     void UpdateSel()
     {
+        if (cropMode) return;
         Sel.Children.Clear();
         handles.Clear();
         selBox = null;
@@ -440,6 +458,7 @@ public partial class EditorWindow : Window
 
     void PositionSel()
     {
+        if (cropMode) { PositionCrop(); return; }
         if (selected == null || selBox == null) return;
         double z = Zoom.ScaleX, hs = 10 / z;
         Rect b;
@@ -641,6 +660,171 @@ public partial class EditorWindow : Window
         }
     }
 
+    // ---------- Zuschneiden (wie in Photoshop: Anfasser am Bildrand nach innen ziehen) ----------
+    bool cropMode;
+    Rect cropRect, cropOrig;
+    int cropDrag = -1;          // 0-7 = Anfasser, 8 = Rahmen verschieben, 9 = neuen Rahmen aufziehen
+    Point cropStartPt;
+    readonly Dictionary<Tool, RadioButton> toolButtons = new();
+    Button? cropApplyBtn, cropCancelBtn;
+    readonly Path cropDim = new() { Fill = new SolidColorBrush(Color.FromArgb(0xAA, 0, 0, 0)), IsHitTestVisible = false };
+    readonly Rectangle cropBorder = new() { Stroke = Brushes.White, IsHitTestVisible = false };
+    readonly TextBlock cropLabel = new() { Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(0xCC, 0x20, 0x20, 0x20)), Padding = new Thickness(5, 1, 5, 1), IsHitTestVisible = false };
+    readonly List<Rectangle> cropHandles = new();
+
+    static readonly Cursor[] CropCursors =
+    {
+        Cursors.SizeNWSE, Cursors.SizeNS, Cursors.SizeNESW, Cursors.SizeWE,
+        Cursors.SizeNWSE, Cursors.SizeNS, Cursors.SizeNESW, Cursors.SizeWE,
+    };
+
+    void StartCrop()
+    {
+        Select(null);                    // vor dem Setzen von cropMode, damit die Auswahl-Anzeige verschwindet
+        cropMode = true;
+        cropRect = new Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight);
+        Sel.Children.Clear();
+        cropHandles.Clear();
+        Sel.Children.Add(cropDim);
+        Sel.Children.Add(cropBorder);
+        Sel.Children.Add(cropLabel);
+        for (int i = 0; i < 8; i++)
+        {
+            var h = MakeCropHandle(i);
+            cropHandles.Add(h);
+            Sel.Children.Add(h);
+        }
+        if (cropApplyBtn != null) cropApplyBtn.Visibility = Visibility.Visible;
+        if (cropCancelBtn != null) cropCancelBtn.Visibility = Visibility.Visible;
+        Status.Text = "Zuschneiden: Anfasser an Rand und Ecken nach innen ziehen · Enter = anwenden · Esc = abbrechen";
+        PositionCrop();
+    }
+
+    void EndCrop()
+    {
+        cropMode = false;
+        cropDrag = -1;
+        Sel.Children.Clear();
+        cropHandles.Clear();
+        if (cropApplyBtn != null) cropApplyBtn.Visibility = Visibility.Collapsed;
+        if (cropCancelBtn != null) cropCancelBtn.Visibility = Visibility.Collapsed;
+        Status.Text = $"{bmp.PixelWidth} × {bmp.PixelHeight} px";
+    }
+
+    void CancelCrop()
+    {
+        EndCrop();
+        toolButtons[Tool.Pointer].IsChecked = true;
+    }
+
+    void ApplyCropNow()
+    {
+        var r = cropRect;
+        EndCrop();
+        toolButtons[Tool.Pointer].IsChecked = true;
+        if (r.Width < bmp.PixelWidth - 0.5 || r.Height < bmp.PixelHeight - 0.5) ApplyCrop(r);
+    }
+
+    Rectangle MakeCropHandle(int idx)
+    {
+        var h = new Rectangle
+        {
+            Fill = Brushes.White, Stroke = new SolidColorBrush(Color.FromRgb(0x1E, 0x88, 0xE5)), Cursor = CropCursors[idx],
+        };
+        h.MouseLeftButtonDown += (_, e) =>
+        {
+            cropDrag = idx; cropOrig = cropRect;
+            h.CaptureMouse();
+            e.Handled = true;
+        };
+        h.MouseMove += (_, e) =>
+        {
+            if (cropDrag != idx || !h.IsMouseCaptured) return;
+            CropDragHandle(idx, e.GetPosition(Art));
+        };
+        h.MouseLeftButtonUp += (_, _) =>
+        {
+            if (cropDrag != idx) return;
+            h.ReleaseMouseCapture();
+            cropDrag = -1;
+        };
+        return h;
+    }
+
+    void CropDragHandle(int idx, Point p)
+    {
+        double W = bmp.PixelWidth, H = bmp.PixelHeight;
+        var o = cropOrig;
+        double l = o.Left, t = o.Top, r = o.Right, b = o.Bottom;
+        bool L = idx is 0 or 6 or 7, R = idx is 2 or 3 or 4, T = idx is 0 or 1 or 2, B = idx is 4 or 5 or 6;
+        if (L) l = Math.Clamp(p.X, 0, r - 8);
+        if (R) r = Math.Clamp(p.X, l + 8, W);
+        if (T) t = Math.Clamp(p.Y, 0, b - 8);
+        if (B) b = Math.Clamp(p.Y, t + 8, H);
+        cropRect = new Rect(l, t, r - l, b - t);
+        PositionCrop();
+    }
+
+    void CropDown(Point p)
+    {
+        cropStartPt = p; cropOrig = cropRect;
+        cropDrag = cropRect.Contains(p) ? 8 : 9;
+        Art.CaptureMouse();
+    }
+
+    void CropMove(Point p)
+    {
+        double W = bmp.PixelWidth, H = bmp.PixelHeight;
+        if (cropDrag == 8)
+        {
+            double dx = p.X - cropStartPt.X, dy = p.Y - cropStartPt.Y;
+            double x = Math.Clamp(cropOrig.X + dx, 0, W - cropOrig.Width);
+            double y = Math.Clamp(cropOrig.Y + dy, 0, H - cropOrig.Height);
+            cropRect = new Rect(x, y, cropOrig.Width, cropOrig.Height);
+        }
+        else
+        {
+            var a = new Point(Math.Clamp(cropStartPt.X, 0, W), Math.Clamp(cropStartPt.Y, 0, H));
+            var b = new Point(Math.Clamp(p.X, 0, W), Math.Clamp(p.Y, 0, H));
+            cropRect = new Rect(a, b);
+        }
+        PositionCrop();
+    }
+
+    void CropUp()
+    {
+        cropDrag = -1;
+        if (cropRect.Width < 8 || cropRect.Height < 8) { cropRect = cropOrig; PositionCrop(); }
+    }
+
+    void PositionCrop()
+    {
+        if (!cropMode || cropHandles.Count < 8) return;
+        double z = Zoom.ScaleX, hs = 12 / z;
+        double W = bmp.PixelWidth, H = bmp.PixelHeight;
+        var r = cropRect;
+        cropDim.Data = new CombinedGeometry(GeometryCombineMode.Exclude, new RectangleGeometry(new Rect(0, 0, W, H)), new RectangleGeometry(r));
+        Canvas.SetLeft(cropBorder, r.X); Canvas.SetTop(cropBorder, r.Y);
+        cropBorder.Width = r.Width; cropBorder.Height = r.Height; cropBorder.StrokeThickness = 1.5 / z;
+
+        double cx = r.X + r.Width / 2, cy = r.Y + r.Height / 2;
+        var pts = new[]
+        {
+            r.TopLeft, new Point(cx, r.Top), r.TopRight, new Point(r.Right, cy),
+            r.BottomRight, new Point(cx, r.Bottom), r.BottomLeft, new Point(r.Left, cy),
+        };
+        for (int i = 0; i < 8; i++)
+        {
+            var h = cropHandles[i];
+            h.Width = h.Height = hs; h.StrokeThickness = 1.5 / z;
+            Canvas.SetLeft(h, pts[i].X - hs / 2); Canvas.SetTop(h, pts[i].Y - hs / 2);
+        }
+        cropLabel.Text = $"{(int)Math.Round(r.Width)} × {(int)Math.Round(r.Height)}";
+        cropLabel.FontSize = 12 / z;
+        Canvas.SetLeft(cropLabel, r.X + 6 / z);
+        Canvas.SetTop(cropLabel, r.Y + 6 / z);
+    }
+
     // ---------- Ausgabe ----------
     BitmapSource Render()
     {
@@ -722,6 +906,8 @@ public partial class EditorWindow : Window
     void OnKey(object sender, KeyEventArgs e)
     {
         if (Keyboard.FocusedElement is TextBox) return;
+        if (cropMode && e.Key == Key.Enter) { ApplyCropNow(); e.Handled = true; return; }
+        if (cropMode && e.Key == Key.Escape) { CancelCrop(); e.Handled = true; return; }
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
         if (ctrl && e.Key == Key.Z) { Undo(); e.Handled = true; }
         else if (ctrl && e.Key == Key.Y) { Redo(); e.Handled = true; }

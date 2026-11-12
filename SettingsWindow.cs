@@ -204,17 +204,11 @@ internal class SettingsWindow : Window
         foreach (var h in list)
             if (!string.IsNullOrEmpty(h) && !used.Add(h)) { msg.Text = $"„{h}“ ist doppelt vergeben."; return; }
 
-        var old = (s.HotkeyRegion, s.HotkeyFullscreen, s.HotkeyWindow, s.HotkeyScroll, s.HotkeyPicker, s.HotkeyMagnifier, s.HotkeyRuler);
+        // Immer speichern – auch wenn ein Kürzel gerade von einem anderen Programm belegt ist
+        // (z. B. PicPick). Es wird dann nur gemeldet und ist aktiv, sobald es frei ist.
         s.HotkeyRegion = region.Text; s.HotkeyFullscreen = full.Text; s.HotkeyWindow = win.Text; s.HotkeyScroll = scroll.Text;
         s.HotkeyPicker = picker.Text; s.HotkeyMagnifier = magnifier.Text; s.HotkeyRuler = rulerKey.Text;
         var failed = app.RegisterAll();
-        if (failed.Count > 0)
-        {
-            (s.HotkeyRegion, s.HotkeyFullscreen, s.HotkeyWindow, s.HotkeyScroll, s.HotkeyPicker, s.HotkeyMagnifier, s.HotkeyRuler) = old;
-            app.RegisterAll();
-            msg.Text = "Nicht möglich, von einem anderen Programm belegt: " + string.Join(", ", failed);
-            return;
-        }
         s.SaveFolder = string.IsNullOrWhiteSpace(folder.Text) ? s.SaveFolder : folder.Text.Trim();
         s.ImageFormat = png.IsChecked == true ? "png" : "jpg";
         s.CheckUpdates = checkUpd.IsChecked == true;
@@ -223,6 +217,13 @@ internal class SettingsWindow : Window
         s.CopyToClipboard = copy.IsChecked == true;
         SetAutostart(autostart.IsChecked == true);
         s.Save();
+        if (failed.Count > 0)
+        {
+            msg.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x8A, 0x65));
+            msg.Text = "Gespeichert. Diese Kürzel sind aber gerade nicht aktiv, weil ein anderes Programm sie belegt: " +
+                       string.Join(", ", failed) + ". Beende das andere Programm und starte Knipser neu oder wähle ein anderes Kürzel.";
+            return;   // Fenster offen lassen, damit die Meldung gelesen wird
+        }
         Close();
     }
 }

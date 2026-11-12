@@ -272,7 +272,11 @@ public partial class App : Application
             if (ov.Result is not Int32Rect r) return;
             await System.Threading.Tasks.Task.Delay(250);   // Overlay ist weg
             var rect = new Rectangle(vs.X + r.X, vs.Y + r.Y, r.Width, r.Height);
-            var result = await ScrollCapture.Run(rect);
+            var frame = new RegionFrame(rect);
+            frame.Show();
+            System.Windows.Media.Imaging.BitmapSource? result;
+            try { result = await ScrollCapture.Run(rect); }
+            finally { frame.Close(); }
             if (result != null) Finish(result);
         }
         catch (Exception ex)
