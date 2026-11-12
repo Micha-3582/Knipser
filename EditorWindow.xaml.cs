@@ -48,7 +48,7 @@ public partial class EditorWindow : Window
         Art.Children.Add(baseImg);
         SetBitmap(bmp);
         BuildToolbar();
-        Loaded += (_, _) => FitZoom();
+        Loaded += (_, _) => { FitMinWidth(); FitZoom(); };
         PreviewKeyDown += OnKey;
         Closing += (_, _) =>
         {
@@ -113,6 +113,94 @@ public partial class EditorWindow : Window
         return d;
     }
 
+    StackPanel? startPanel;
+
+    /// <summary>Fenster nie schmaler als das Menüband (Reiter Start) breit ist, damit alle Gruppen sichtbar bleiben.</summary>
+    void FitMinWidth()
+    {
+        if (startPanel == null) return;
+        startPanel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double chrome = Math.Max(0, ActualWidth - Ribbon.ActualWidth);
+        MinWidth = Math.Ceiling(startPanel.DesiredSize.Width + chrome + 6);
+        if (Width < MinWidth) Width = MinWidth;
+    }
+
+    // ---------- Pfeil-Untermenü (Ecke am Symbol, langer Druck oder Rechtsklick) ----------
+    Path? arrowPrev;
+    static readonly string[] ArrowNames = { "Klassisch", "Spitz", "Offen", "Modern", "Punkt" };
+
+    UIElement BuildArrowIcon()
+    {
+        var g = new Grid { Width = 32, Height = 26, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1, 0, 1) };
+        arrowPrev = new Path
+        {
+            Stroke = Ink, StrokeThickness = 1.8, Width = 24, Height = 24, HorizontalAlignment = HorizontalAlignment.Center,
+            StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+        };
+        g.Children.Add(arrowPrev);
+        g.Children.Add(new Path { Data = Geometry.Parse("M0,6 L6,6 L6,0 Z"), Fill = new SolidColorBrush(Color.FromRgb(0xAA, 0xAA, 0xAA)), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 1) });
+        UpdateArrowIcon();
+        return g;
+    }
+
+    void UpdateArrowIcon()
+    {
+        if (arrowPrev == null) return;
+        int st = Math.Clamp(settings.ArrowStyle, 0, 4);
+        arrowPrev.Data = ArrowGeo(new Point(3, 21), new Point(21, 3), true, st == 4 ? 0 : -1.5, st);
+        arrowPrev.Fill = st == 2 ? null : Ink;
+    }
+
+    void HookArrowMenu(RadioButton rb)
+    {
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        timer.Tick += (_, _) => { timer.Stop(); ShowArrowMenu(rb); };
+        rb.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            var pos = e.GetPosition(rb);
+            if (pos.X > rb.ActualWidth - 22 && pos.Y < 38) { ShowArrowMenu(rb); e.Handled = true; return; }   // kleine Ecke am Symbol
+            timer.Start();
+        };
+        rb.PreviewMouseLeftButtonUp += (_, _) => timer.Stop();
+        rb.MouseLeave += (_, _) => timer.Stop();
+        rb.MouseRightButtonUp += (_, e) => { ShowArrowMenu(rb); e.Handled = true; };
+    }
+
+    void ShowArrowMenu(FrameworkElement target)
+    {
+        var pop = new Popup { PlacementTarget = target, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true };
+        var panel = new StackPanel();
+        for (int i = 0; i < ArrowNames.Length; i++)
+        {
+            int st = i;
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock { Text = st == settings.ArrowStyle ? "✓" : "", Foreground = Ink, Width = 16, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new Path
+            {
+                Data = ArrowGeo(new Point(4, 12), new Point(58, 12), true, 2.5, st), Stroke = Ink, StrokeThickness = 2.5, Fill = st == 2 ? null : Ink,
+                StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, Width = 64, Height = 24,
+            });
+            row.Children.Add(new TextBlock { Text = ArrowNames[i], Foreground = Ink, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 6, 0), MinWidth = 60 });
+            var b = new Button { Content = row, Style = (Style)FindResource("RibbonBtn"), HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(6, 3, 6, 3) };
+            if (st == settings.ArrowStyle) b.Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44));
+            b.Click += (_, _) =>
+            {
+                settings.ArrowStyle = st; settings.Save();
+                UpdateArrowIcon();
+                toolButtons[Tool.Arrow].IsChecked = true;
+                pop.IsOpen = false;
+            };
+            panel.Children.Add(b);
+        }
+        pop.Child = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(3), Child = panel,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5 },
+        };
+        pop.IsOpen = true;
+    }
+
     void BuildToolbar()
     {
         var panels = new Dictionary<string, StackPanel>();
@@ -145,6 +233,7 @@ public partial class EditorWindow : Window
             tabs.Children.Add(tb);
         }
         panels["Start"].Visibility = Visibility.Visible;
+        startPanel = panels["Start"];
 
         // --- Reiter Datei ---
         var fmtBox = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) };
@@ -174,7 +263,7 @@ public partial class EditorWindow : Window
         (string label, Tool t, UIElement icon)[] tools =
         {
             ("Auswahl", Tool.Pointer, Geo("M6,3 L6,19 L10,15 L13,21 L15.5,20 L12.5,14 L18,14 Z", true)),
-            ("Pfeil", Tool.Arrow, Geo("M4,20 L19,5 M19,5 L11,5 M19,5 L19,13")),
+            ("Pfeil", Tool.Arrow, BuildArrowIcon()),
             ("Linie", Tool.Line, Geo("M4,20 L20,4")),
             ("Rahmen", Tool.Rect, Geo("M4,6 H20 V18 H4 Z")),
             ("Ellipse", Tool.Ellipse, Geo("M3,12 A9,6 0 1 0 21,12 A9,6 0 1 0 3,12")),
@@ -200,6 +289,7 @@ public partial class EditorWindow : Window
                 if (tt == Tool.Crop) StartCrop();
             };
             toolButtons[t] = rb;
+            if (t == Tool.Arrow) HookArrowMenu(rb);
             (t == Tool.Crop ? bildGroup : toolGroup).Add(rb);
         }
 
@@ -798,7 +888,7 @@ public partial class EditorWindow : Window
                 v.Normalize();
                 if (style == 4)
                 {
-                    double r = 3 + thick * 1.6;
+                    double r = Math.Max(2.5, 3 + thick * 1.6);
                     c.BeginFigure(new Point(b.X + r, b.Y), true, true);
                     c.ArcTo(new Point(b.X - r, b.Y), new Size(r, r), 0, false, SweepDirection.Clockwise, true, true);
                     c.ArcTo(new Point(b.X + r, b.Y), new Size(r, r), 0, false, SweepDirection.Clockwise, true, true);
