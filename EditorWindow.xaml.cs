@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Windows;
@@ -647,16 +647,27 @@ public partial class EditorWindow : Window
     }
 
     // ---------- Nummern ----------
+    /// <summary>Kleinste Nummer ab 1, die noch nicht auf dem Bild vergeben ist (gelöschte Nummern werden wieder frei).</summary>
+    int NextFreeNumber()
+    {
+        var used = new System.Collections.Generic.HashSet<int>();
+        foreach (var c in Art.Children)
+            if (c is Grid { Children.Count: 2 } g && g.Children[0] is Ellipse && g.Children[1] is TextBlock t && int.TryParse(t.Text, out int v)) used.Add(v);
+        int n = 1;
+        while (used.Contains(n)) n++;
+        return n;
+    }
+
     void AddNumber(Point p)
     {
-        int n = counter++;
+        int n = NextFreeNumber();
         double d = 22 + thick * 2;
         var g = new Grid { Width = d, Height = d };
         g.Children.Add(new Ellipse { Fill = Brush(), Stroke = Brushes.White, StrokeThickness = 2 });
         g.Children.Add(new TextBlock { Text = n.ToString(), Foreground = Brushes.White, FontWeight = FontWeights.Bold, FontSize = d * 0.5, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         Canvas.SetLeft(g, p.X - d / 2); Canvas.SetTop(g, p.Y - d / 2);
         Art.Children.Add(g);
-        Push(() => { Art.Children.Remove(g); counter--; }, () => { Art.Children.Add(g); counter++; });
+        Push(() => Art.Children.Remove(g), () => Art.Children.Add(g));
         Select(g);
     }
 
