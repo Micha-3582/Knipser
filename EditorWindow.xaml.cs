@@ -59,6 +59,13 @@ public partial class EditorWindow : Window
     {
         AddButton("Speichern", (_, _) => QuickSave());
         AddButton("Speichern unter…", (_, _) => SaveAs());
+        foreach (var f in new[] { "jpg", "png" })
+        {
+            var rb = new RadioButton { Content = f.ToUpperInvariant(), GroupName = "fmt", IsChecked = Ext == f, ToolTip = "Format beim Speichern" };
+            var ff = f;
+            rb.Checked += (_, _) => { settings.ImageFormat = ff; settings.Save(); };
+            Bar.Children.Add(rb);
+        }
         AddButton("Kopieren", (_, _) => CopyToClipboard());
         AddSep();
         AddButton("Rückgängig", (_, _) => Undo());
@@ -501,12 +508,14 @@ public partial class EditorWindow : Window
         Status.Text = "Gespeichert: " + path;
     }
 
+    string Ext => settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase) ? "png" : "jpg";
+
     void QuickSave()
     {
         try
         {
             Directory.CreateDirectory(settings.SaveFolder);
-            SaveTo(System.IO.Path.Combine(settings.SaveFolder, $"Knipser_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png"));
+            SaveTo(System.IO.Path.Combine(settings.SaveFolder, $"Knipser_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.{Ext}"));
         }
         catch (Exception ex) { Status.Text = "Fehler beim Speichern: " + ex.Message; }
     }
@@ -515,9 +524,10 @@ public partial class EditorWindow : Window
     {
         var dlg = new SaveFileDialog
         {
-            Filter = "PNG (*.png)|*.png|JPEG (*.jpg)|*.jpg|Bitmap (*.bmp)|*.bmp",
+            Filter = "JPEG (*.jpg)|*.jpg|PNG (*.png)|*.png|Bitmap (*.bmp)|*.bmp",
+            FilterIndex = Ext == "png" ? 2 : 1,
             FileName = $"Knipser_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}",
-            DefaultExt = ".png",
+            DefaultExt = "." + Ext,
         };
         try { Directory.CreateDirectory(settings.SaveFolder); dlg.InitialDirectory = settings.SaveFolder; } catch { }
         if (dlg.ShowDialog(this) != true) return;

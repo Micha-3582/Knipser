@@ -16,6 +16,7 @@ internal class SettingsWindow : Window
     readonly App app;
     readonly TextBox region = Hk(), full = Hk(), win = Hk(), scroll = Hk();
     readonly TextBox folder = new() { Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)), Padding = new Thickness(6, 4, 6, 4), VerticalContentAlignment = VerticalAlignment.Center };
+    readonly RadioButton jpg = new() { Content = "JPG", GroupName = "fmt" }, png = new() { Content = "PNG", GroupName = "fmt" };
     readonly CheckBox openEditor = new() { Content = "Nach der Aufnahme den Editor öffnen" };
     readonly CheckBox saveOnClose = new() { Content = "Beim Schließen des Editors automatisch speichern" };
     readonly CheckBox copy = new() { Content = "Aufnahme automatisch in die Zwischenablage kopieren" };
@@ -61,6 +62,14 @@ internal class SettingsWindow : Window
             using var d = new Forms.FolderBrowserDialog { SelectedPath = folder.Text, Description = "Speicherordner für Screenshots" };
             if (d.ShowDialog() == Forms.DialogResult.OK) folder.Text = d.SelectedPath;
         };
+
+        var fmt = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
+        fmt.Children.Add(new TextBlock { Text = "Bildformat", Width = 230, VerticalAlignment = VerticalAlignment.Center });
+        fmt.Children.Add(jpg); fmt.Children.Add(png);
+        foreach (var rb in new[] { jpg, png }) { rb.Foreground = Foreground; rb.Margin = new Thickness(0, 0, 18, 0); }
+        jpg.IsChecked = !s.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
+        png.IsChecked = !jpg.IsChecked;
+        root.Children.Add(fmt);
 
         root.Children.Add(Head("Verhalten"));
         foreach (var c in new[] { openEditor, saveOnClose, copy, autostart })
@@ -155,6 +164,7 @@ internal class SettingsWindow : Window
             return;
         }
         s.SaveFolder = string.IsNullOrWhiteSpace(folder.Text) ? s.SaveFolder : folder.Text.Trim();
+        s.ImageFormat = png.IsChecked == true ? "png" : "jpg";
         s.OpenEditor = openEditor.IsChecked == true;
         s.SaveOnClose = saveOnClose.IsChecked == true;
         s.CopyToClipboard = copy.IsChecked == true;
