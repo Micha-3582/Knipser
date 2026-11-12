@@ -34,6 +34,7 @@ public partial class EditorWindow : Window
     UIElement? dragEl, selected;
     Point dragStart, dragOrig;
     bool shift;
+    bool saved;   // seit dem letzten Speichern/Öffnen nichts mehr geändert (und gespeichert)
 
     readonly List<Border> swatches = new();
 
@@ -47,7 +48,10 @@ public partial class EditorWindow : Window
         BuildToolbar();
         Loaded += (_, _) => FitZoom();
         PreviewKeyDown += OnKey;
-        SizeChanged += (_, _) => { };
+        Closing += (_, _) =>
+        {
+            if (settings.SaveOnClose && !saved) QuickSave();
+        };
     }
 
     // ---------- Aufbau Werkzeugleiste ----------
@@ -103,6 +107,8 @@ public partial class EditorWindow : Window
         AddButton("+", (_, _) => SetZoom(Zoom.ScaleX * 1.25));
         AddButton("Anpassen", (_, _) => FitZoom());
         AddButton("100 %", (_, _) => SetZoom(1));
+        AddSep();
+        AddButton("Einstellungen", (_, _) => ((App)Application.Current).ShowSettings());
     }
 
     void AddButton(string text, RoutedEventHandler click)
@@ -159,6 +165,7 @@ public partial class EditorWindow : Window
     {
         undoStack.Push((undo, redo));
         redoStack.Clear();
+        saved = false;
     }
 
     void Undo()
@@ -168,6 +175,7 @@ public partial class EditorWindow : Window
         var a = undoStack.Pop();
         a.undo();
         redoStack.Push(a);
+        saved = false;
     }
 
     void Redo()
@@ -176,6 +184,7 @@ public partial class EditorWindow : Window
         var a = redoStack.Pop();
         a.redo();
         undoStack.Push(a);
+        saved = false;
     }
 
     UIElement? FindEl(object src)
@@ -488,6 +497,7 @@ public partial class EditorWindow : Window
         enc.Frames.Add(BitmapFrame.Create(Render()));
         using var fs = File.Create(path);
         enc.Save(fs);
+        saved = true;
         Status.Text = "Gespeichert: " + path;
     }
 

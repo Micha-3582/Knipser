@@ -10,9 +10,12 @@ public class Settings
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Knipser");
     public bool OpenEditor { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
+    /// <summary>Editor schließen speichert das Bild automatisch (wie bei PicPick).</summary>
+    public bool SaveOnClose { get; set; } = true;
     public string HotkeyRegion { get; set; } = "PrintScreen";
     public string HotkeyFullscreen { get; set; } = "Ctrl+PrintScreen";
     public string HotkeyWindow { get; set; } = "Alt+PrintScreen";
+    public string HotkeyScroll { get; set; } = "Ctrl+Shift+PrintScreen";
 
     static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Knipser", "settings.json");

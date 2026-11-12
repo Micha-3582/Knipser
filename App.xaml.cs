@@ -32,18 +32,40 @@ public partial class App : Application
         var p = new HwndSourceParameters("KnipserHotkeys") { ParentWindow = new IntPtr(-3), Width = 0, Height = 0 };
         hotkeyWindow = new HwndSource(p);
         hotkeyWindow.AddHook(WndProc);
-        var failed = new List<string>();
-        Register(1, Settings.HotkeyRegion, CaptureRegion, failed);
-        Register(2, Settings.HotkeyFullscreen, CaptureFullscreen, failed);
-        Register(3, Settings.HotkeyWindow, CaptureWindow, failed);
+        var failed = RegisterAll();
         if (failed.Count > 0)
             tray!.ShowBalloonTip(5000, "Knipser",
                 "Tastenkürzel belegt (läuft evtl. noch ein anderes Screenshot-Programm?): " + string.Join(", ", failed),
                 Forms.ToolTipIcon.Warning);
     }
 
+    /// <summary>Registriert alle Tastenkürzel neu (auch nach Änderung in den Einstellungen). Liefert die nicht registrierbaren.</summary>
+    public List<string> RegisterAll()
+    {
+        foreach (var id in hotkeys.Keys) Native.UnregisterHotKey(hotkeyWindow!.Handle, id);
+        hotkeys.Clear();
+        var failed = new List<string>();
+        Register(1, Settings.HotkeyRegion, CaptureRegion, failed);
+        Register(2, Settings.HotkeyFullscreen, CaptureFullscreen, failed);
+        Register(3, Settings.HotkeyWindow, CaptureWindow, failed);
+        Register(4, Settings.HotkeyScroll, CaptureScroll, failed);
+        return failed;
+    }
+
+    SettingsWindow? settingsWin;
+
+    public void ShowSettings()
+    {
+        if (settingsWin != null) { settingsWin.Activate(); return; }
+        settingsWin = new SettingsWindow(Settings, this);
+        settingsWin.Closed += (_, _) => settingsWin = null;
+        settingsWin.Show();
+        settingsWin.Activate();
+    }
+
     void Register(int id, string text, Action action, List<string> failed)
     {
+        if (string.IsNullOrWhiteSpace(text)) return;   // leer = nicht belegt
         if (!TryParse(text, out uint mod, out uint vk) ||
             !Native.RegisterHotKey(hotkeyWindow!.Handle, id, mod | Native.MOD_NOREPEAT, vk))
         { failed.Add(text); return; }
@@ -86,8 +108,10 @@ public partial class App : Application
         menu.Items.Add("Bereich aufnehmen", null, (_, _) => CaptureRegion());
         menu.Items.Add("Vollbild aufnehmen", null, (_, _) => CaptureFullscreen());
         menu.Items.Add("Fenster unter Mauszeiger", null, (_, _) => CaptureWindow());
+        menu.Items.Add("Scrollende Aufnahme", null, (_, _) => CaptureScroll());
         menu.Items.Add("Bild aus Zwischenablage öffnen", null, (_, _) => OpenClipboard());
         menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add("Einstellungen…", null, (_, _) => ShowSettings());
         menu.Items.Add("Speicherordner öffnen", null, (_, _) =>
         {
             Directory.CreateDirectory(Settings.SaveFolder);
@@ -151,6 +175,29 @@ public partial class App : Application
                 crop.Freeze();
                 Finish(crop);
             }
+        }
+        finally { busy = false; }
+    }
+
+    async void CaptureScroll()
+    {
+        if (busy) return;
+        busy = true;
+        try
+        {
+            var vs = Capture.VirtualScreen;
+            var shot = Capture.Grab(vs);
+            var ov = new SelectionOverlay(shot, vs);
+            ov.ShowDialog();
+            if (ov.Result is not Int32Rect r) return;
+            await System.Threading.Tasks.Task.Delay(250);   // Overlay ist weg
+            var rect = new Rectangle(vs.X + r.X, vs.Y + r.Y, r.Width, r.Height);
+            var result = await ScrollCapture.Run(rect);
+            if (result != null) Finish(result);
+        }
+        catch (Exception ex)
+        {
+            tray?.ShowBalloonTip(4000, "Knipser", "Scroll-Aufnahme fehlgeschlagen: " + ex.Message, Forms.ToolTipIcon.Error);
         }
         finally { busy = false; }
     }
