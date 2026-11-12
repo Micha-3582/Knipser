@@ -206,22 +206,9 @@ public partial class EditorWindow : Window
         panels["Start"].Children.Add(Group("Bild", bildGroup.ToArray()));
         panels["Start"].Children.Add(Group("Werkzeuge", toolGroup.ToArray()));
 
-        Button Arr(string glyph, string text, int mode, string tip)
-        {
-            var row = new StackPanel { Orientation = Orientation.Horizontal };
-            row.Children.Add(new TextBlock { Text = glyph, FontFamily = IconFont, FontSize = 14, Foreground = Ink, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
-            row.Children.Add(new TextBlock { Text = text, FontSize = 11.5, Foreground = Ink, VerticalAlignment = VerticalAlignment.Center });
-            var bt = new Button { Content = row, Style = (Style)FindResource("RibbonBtn"), ToolTip = tip, Padding = new Thickness(5, 3, 8, 3), HorizontalContentAlignment = HorizontalAlignment.Left };
-            bt.Click += (_, _) => Reorder(mode);
-            return bt;
-        }
-        var arrCol1 = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        arrCol1.Children.Add(Arr("\uE70E", "Ganz nach vorne", 0, "Ausgewähltes Element ganz nach vorne (Strg+Umschalt+#)"));
-        arrCol1.Children.Add(Arr("\uE70D", "Ganz nach hinten", 1, "Ausgewähltes Element ganz nach hinten (Strg+Umschalt+ß)"));
-        var arrCol2 = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        arrCol2.Children.Add(Arr("\uE74A", "Eine Ebene vor", 2, "Eine Ebene nach vorne (Strg+#)"));
-        arrCol2.Children.Add(Arr("\uE74B", "Eine Ebene zurück", 3, "Eine Ebene nach hinten (Strg+ß)"));
-        panels["Start"].Children.Add(Group("Anordnen", arrCol1, arrCol2));
+        panels["Start"].Children.Add(Group("Anordnen",
+            BigBtn(Glyph(""), "Ebene hoch", (_, _) => Reorder(2), "Ausgewähltes Element eine Ebene nach vorne (Strg+#)"),
+            BigBtn(Glyph(""), "Ebene runter", (_, _) => Reorder(3), "Ausgewähltes Element eine Ebene nach hinten (Strg+ß)")));
 
         var slider = new Slider { Minimum = 1, Maximum = 20, Value = thick, Width = 100, VerticalAlignment = VerticalAlignment.Center, IsSnapToTickEnabled = true, TickFrequency = 1, ToolTip = "Strichstärke bzw. Schriftgröße" };
         thickSlider = slider;
@@ -1230,8 +1217,8 @@ public partial class EditorWindow : Window
         else if (ctrl && e.Key == Key.Y) { Redo(); e.Handled = true; }
         else if (ctrl && e.Key == Key.S) { QuickSave(); e.Handled = true; }
         else if (ctrl && e.Key == Key.C) { CopyToClipboard(); e.Handled = true; }
-        else if (ctrl && e.Key == Key.OemQuestion) { Reorder(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 0 : 2); e.Handled = true; }   // Strg+# (deutsche Tastatur)
-        else if (ctrl && e.Key == Key.OemOpenBrackets) { Reorder(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 3); e.Handled = true; }   // Strg+ß
+        else if (ctrl && e.Key == Key.OemQuestion) { Reorder(2); e.Handled = true; }   // Strg+# (deutsche Tastatur)
+        else if (ctrl && e.Key == Key.OemOpenBrackets) { Reorder(3); e.Handled = true; }   // Strg+ß
         else if (e.Key == Key.Delete && selected != null)
         {
             var el = selected; Select(null);
