@@ -10,6 +10,8 @@ public class Settings
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Knipser");
     /// <summary>Standard-Bildformat beim Speichern: "jpg" oder "png".</summary>
     public string ImageFormat { get; set; } = "jpg";
+    /// <summary>Beim Start still nach neuer Version suchen (kein Popup, nur Eintrag im Tray-Menü).</summary>
+    public bool CheckUpdates { get; set; } = true;
     public bool OpenEditor { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
     /// <summary>Editor schließen speichert das Bild automatisch (wie bei PicPick).</summary>

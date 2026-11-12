@@ -32,6 +32,7 @@ public partial class App : Application
         var p = new HwndSourceParameters("KnipserHotkeys") { ParentWindow = new IntPtr(-3), Width = 0, Height = 0 };
         hotkeyWindow = new HwndSource(p);
         hotkeyWindow.AddHook(WndProc);
+        if (Settings.CheckUpdates) SilentUpdateCheck();
         var failed = RegisterAll();
         if (failed.Count > 0)
             tray!.ShowBalloonTip(5000, "Knipser",
@@ -50,6 +51,43 @@ public partial class App : Application
         Register(3, Settings.HotkeyWindow, CaptureWindow, failed);
         Register(4, Settings.HotkeyScroll, CaptureScroll, failed);
         return failed;
+    }
+
+    // ---------- Updates ----------
+    Forms.ToolStripMenuItem? updateItem;
+    public Updater.Info? PendingUpdate { get; private set; }
+
+    /// <summary>Sucht nach einer neuen Version. Wirft bei Netzwerkfehlern.</summary>
+    public async System.Threading.Tasks.Task<Updater.Info?> CheckForUpdate()
+    {
+        var info = await Updater.CheckAsync();
+        PendingUpdate = info;
+        if (updateItem != null)
+        {
+            updateItem.Visible = info != null;
+            if (info != null) updateItem.Text = $"Update auf {info.Tag} installieren";
+        }
+        return info;
+    }
+
+    /// <summary>Lädt die neue Version und startet Knipser neu. Wirft bei Fehlern.</summary>
+    public async System.Threading.Tasks.Task InstallUpdate(Updater.Info info)
+    {
+        await Updater.PrepareInstallAsync(info);
+        Quit();
+    }
+
+    async void InstallFromTray()
+    {
+        if (PendingUpdate == null) return;
+        try { await InstallUpdate(PendingUpdate); }
+        catch (Exception ex) { tray?.ShowBalloonTip(4000, "Knipser", "Update fehlgeschlagen: " + ex.Message, Forms.ToolTipIcon.Error); }
+    }
+
+    async void SilentUpdateCheck()
+    {
+        await System.Threading.Tasks.Task.Delay(8000);
+        try { await CheckForUpdate(); } catch { }   // offline o. Ä.: still ignorieren
     }
 
     SettingsWindow? settingsWin;
@@ -105,6 +143,9 @@ public partial class App : Application
     void BuildTray()
     {
         var menu = new Forms.ContextMenuStrip();
+        updateItem = new Forms.ToolStripMenuItem("Update installieren") { Visible = false, Font = new Font(menu.Font, System.Drawing.FontStyle.Bold) };
+        updateItem.Click += (_, _) => InstallFromTray();
+        menu.Items.Add(updateItem);
         menu.Items.Add("Bereich aufnehmen", null, (_, _) => CaptureRegion());
         menu.Items.Add("Vollbild aufnehmen", null, (_, _) => CaptureFullscreen());
         menu.Items.Add("Fenster unter Mauszeiger", null, (_, _) => CaptureWindow());

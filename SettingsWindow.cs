@@ -23,6 +23,40 @@ internal class SettingsWindow : Window
     readonly CheckBox autostart = new() { Content = "Mit Windows starten" };
     readonly TextBlock msg = new() { Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x8A, 0x65)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
 
+    readonly Button updBtn = new() { Content = "Nach Updates suchen", Padding = new Thickness(10, 4, 10, 4) };
+    readonly TextBlock updText = new() { Foreground = new SolidColorBrush(Color.FromRgb(0xAA, 0xAA, 0xAA)), TextWrapping = TextWrapping.Wrap };
+    readonly CheckBox checkUpd = new() { Content = "Beim Start still nach Updates suchen" };
+    Updater.Info? found;
+
+    void ShowPending(Updater.Info info)
+    {
+        found = info;
+        updBtn.Content = $"Auf {info.Tag} aktualisieren";
+        updText.Text = $"Neue Version {info.Tag} verfügbar." + (string.IsNullOrWhiteSpace(info.Notes) ? "" : "\n" + info.Notes.Trim());
+    }
+
+    async System.Threading.Tasks.Task UpdateClick()
+    {
+        updBtn.IsEnabled = false;
+        try
+        {
+            if (found == null)
+            {
+                updText.Text = "Suche …";
+                var info = await app.CheckForUpdate();
+                if (info == null) updText.Text = "Du hast die neueste Version.";
+                else ShowPending(info);
+            }
+            else
+            {
+                updText.Text = "Lade Update …";
+                await app.InstallUpdate(found);
+            }
+        }
+        catch (Exception ex) { updText.Text = "Fehlgeschlagen: " + ex.Message; }
+        finally { updBtn.IsEnabled = true; }
+    }
+
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
     static TextBox Hk() => new()
@@ -77,6 +111,17 @@ internal class SettingsWindow : Window
             c.Foreground = Foreground; c.Margin = new Thickness(0, 3, 0, 3);
             root.Children.Add(c);
         }
+        root.Children.Add(Head("Updates"));
+        var ur = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 4) };
+        ur.Children.Add(new TextBlock { Text = "Installierte Version: " + Updater.CurrentText, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0) });
+        ur.Children.Add(updBtn);
+        root.Children.Add(ur);
+        root.Children.Add(updText);
+        checkUpd.Foreground = Foreground; checkUpd.Margin = new Thickness(0, 3, 0, 3);
+        root.Children.Add(checkUpd);
+        updBtn.Click += async (_, _) => await UpdateClick();
+        if (app.PendingUpdate != null) ShowPending(app.PendingUpdate);
+
         root.Children.Add(msg);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
@@ -90,6 +135,7 @@ internal class SettingsWindow : Window
         folder.Text = s.SaveFolder;
         openEditor.IsChecked = s.OpenEditor; saveOnClose.IsChecked = s.SaveOnClose; copy.IsChecked = s.CopyToClipboard;
         autostart.IsChecked = GetAutostart();
+        checkUpd.IsChecked = s.CheckUpdates;
 
         foreach (var t in new[] { region, full, win, scroll }) t.PreviewKeyDown += HotkeyKey;
         ok.Click += (_, _) => Apply();
@@ -165,6 +211,7 @@ internal class SettingsWindow : Window
         }
         s.SaveFolder = string.IsNullOrWhiteSpace(folder.Text) ? s.SaveFolder : folder.Text.Trim();
         s.ImageFormat = png.IsChecked == true ? "png" : "jpg";
+        s.CheckUpdates = checkUpd.IsChecked == true;
         s.OpenEditor = openEditor.IsChecked == true;
         s.SaveOnClose = saveOnClose.IsChecked == true;
         s.CopyToClipboard = copy.IsChecked == true;
