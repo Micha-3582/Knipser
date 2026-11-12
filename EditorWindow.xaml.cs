@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -55,32 +56,141 @@ public partial class EditorWindow : Window
         };
     }
 
-    // ---------- Aufbau Werkzeugleiste ----------
+    // ---------- Aufbau Menüband (Ribbon) ----------
+    static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(0xEE, 0xEE, 0xEE));
+    static readonly FontFamily IconFont = new("Segoe Fluent Icons, Segoe MDL2 Assets");
+
+    static UIElement Glyph(string g, double size = 22) => new TextBlock { Text = g, FontFamily = IconFont, FontSize = size, Foreground = Ink, HorizontalAlignment = HorizontalAlignment.Center, Height = 26 };
+
+    static UIElement Geo(string data, bool fill = false) => new Path
+    {
+        Data = Geometry.Parse(data), Stroke = Ink, StrokeThickness = 1.8, Fill = fill ? Ink : null, Width = 24, Height = 24,
+        StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+        HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1, 0, 1),
+    };
+
+    static UIElement NumberIcon()
+    {
+        var g = new Grid { Width = 24, Height = 24, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1, 0, 1) };
+        g.Children.Add(new Ellipse { Stroke = Ink, StrokeThickness = 1.8, Margin = new Thickness(1) });
+        g.Children.Add(new TextBlock { Text = "1", Foreground = Ink, FontWeight = FontWeights.Bold, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+        return g;
+    }
+
+    static UIElement WithLabel(UIElement icon, string label)
+    {
+        var sp = new StackPanel { MinWidth = 44 };
+        sp.Children.Add(icon);
+        sp.Children.Add(new TextBlock { Text = label, FontSize = 11.5, Foreground = Ink, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 3, 0, 0) });
+        return sp;
+    }
+
+    Button BigBtn(UIElement icon, string label, RoutedEventHandler click, string? tip = null)
+    {
+        var b = new Button { Content = WithLabel(icon, label), Style = (Style)FindResource("RibbonBtn"), ToolTip = tip ?? label };
+        b.Click += click;
+        return b;
+    }
+
+    Button SmallBtn(string glyph, RoutedEventHandler click, string tip)
+    {
+        var b = new Button { Content = new TextBlock { Text = glyph, FontFamily = IconFont, FontSize = 15, Foreground = Ink }, Style = (Style)FindResource("RibbonBtn"), ToolTip = tip, Padding = new Thickness(4) };
+        b.Click += click;
+        return b;
+    }
+
+    static UIElement Group(string title, params UIElement[] items)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        foreach (var i in items) row.Children.Add(i);
+        var col = new StackPanel { Margin = new Thickness(6, 4, 6, 2) };
+        col.Children.Add(new Border { Height = 62, Child = row });
+        col.Children.Add(new TextBlock { Text = title, FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99)), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 3, 0, 0) });
+        var d = new DockPanel();
+        var sep = new Border { Width = 1, Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)), Margin = new Thickness(0, 6, 0, 6) };
+        DockPanel.SetDock(sep, Dock.Right);
+        d.Children.Add(sep); d.Children.Add(col);
+        return d;
+    }
+
     void BuildToolbar()
     {
-        AddButton("Speichern", (_, _) => QuickSave());
-        AddButton("Speichern unter…", (_, _) => SaveAs());
+        var panels = new Dictionary<string, StackPanel>();
+
+        // --- Kopfzeile: Schnellzugriff + Reiter ---
+        var head = new DockPanel { Margin = new Thickness(6, 3, 6, 0) };
+        var quick = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 14, 2), VerticalAlignment = VerticalAlignment.Center };
+        quick.Children.Add(SmallBtn("\uE74E", (_, _) => QuickSave(), "Speichern"));
+        quick.Children.Add(SmallBtn("\uE7A7", (_, _) => Undo(), "Rückgängig (Strg+Z)"));
+        quick.Children.Add(SmallBtn("\uE7A6", (_, _) => Redo(), "Wiederholen (Strg+Y)"));
+        DockPanel.SetDock(quick, Dock.Left);
+        head.Children.Add(quick);
+        var tabs = new StackPanel { Orientation = Orientation.Horizontal };
+        head.Children.Add(tabs);
+        Ribbon.Children.Add(head);
+
+        var body = new Border { Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)), BorderThickness = new Thickness(0, 1, 0, 1), Height = 100 };
+        var host = new Grid();
+        body.Child = host;
+        Ribbon.Children.Add(body);
+
+        foreach (var name in new[] { "Datei", "Start", "Ansicht" })
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal, Visibility = Visibility.Collapsed };
+            panels[name] = panel;
+            host.Children.Add(panel);
+            var tb = new RadioButton { Content = name, GroupName = "tabs", Style = (Style)FindResource("RibbonTab"), IsChecked = name == "Start" };
+            var n = name;
+            tb.Checked += (_, _) => { foreach (var kv in panels) kv.Value.Visibility = kv.Key == n ? Visibility.Visible : Visibility.Collapsed; };
+            tabs.Children.Add(tb);
+        }
+        panels["Start"].Visibility = Visibility.Visible;
+
+        // --- Reiter Datei ---
+        var fmtBox = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) };
         foreach (var f in new[] { "jpg", "png" })
         {
-            var rb = new RadioButton { Content = f.ToUpperInvariant(), GroupName = "fmt", IsChecked = Ext == f, ToolTip = "Format beim Speichern" };
+            var rb = new RadioButton { Content = f.ToUpperInvariant(), GroupName = "fmt", IsChecked = Ext == f, ToolTip = "Format beim Speichern", Margin = new Thickness(2, 1, 2, 1) };
             var ff = f;
             rb.Checked += (_, _) => { settings.ImageFormat = ff; settings.Save(); };
-            Bar.Children.Add(rb);
+            fmtBox.Children.Add(rb);
         }
-        AddButton("Kopieren", (_, _) => CopyToClipboard());
-        AddSep();
-        AddButton("Rückgängig", (_, _) => Undo());
-        AddButton("Wiederholen", (_, _) => Redo());
-        AddSep();
-        (string, Tool)[] tools =
+        panels["Datei"].Children.Add(Group("Speichern",
+            BigBtn(Glyph("\uE74E"), "Speichern", (_, _) => QuickSave()),
+            BigBtn(Glyph("\uE792"), "Speichern unter", (_, _) => SaveAs(), "Speichern unter…"),
+            fmtBox));
+        panels["Datei"].Children.Add(Group("Zwischenablage",
+            BigBtn(Glyph("\uE8C8"), "Kopieren", (_, _) => CopyToClipboard())));
+        panels["Datei"].Children.Add(Group("Programm",
+            BigBtn(Glyph("\uE713"), "Einstellungen", (_, _) => ((App)Application.Current).ShowSettings())));
+
+        // --- Reiter Start ---
+        cropApplyBtn = new Button { Content = "Zuschnitt anwenden", Background = new SolidColorBrush(Color.FromRgb(0x2E, 0x7D, 0x32)), Visibility = Visibility.Collapsed, Margin = new Thickness(2, 1, 2, 1), Padding = new Thickness(8, 3, 8, 3) };
+        cropApplyBtn.Click += (_, _) => ApplyCropNow();
+        cropCancelBtn = new Button { Content = "Abbrechen", Visibility = Visibility.Collapsed, Margin = new Thickness(2, 1, 2, 1), Padding = new Thickness(8, 3, 8, 3) };
+        cropCancelBtn.Click += (_, _) => CancelCrop();
+        var cropStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        cropStack.Children.Add(cropApplyBtn); cropStack.Children.Add(cropCancelBtn);
+
+        (string label, Tool t, UIElement icon)[] tools =
         {
-            ("Auswahl", Tool.Pointer), ("Pfeil", Tool.Arrow), ("Linie", Tool.Line), ("Rahmen", Tool.Rect),
-            ("Ellipse", Tool.Ellipse), ("Stift", Tool.Pen), ("Marker", Tool.Marker), ("Text", Tool.Text),
-            ("Nummer", Tool.Number), ("Verpixeln", Tool.Blur), ("Zuschneiden", Tool.Crop),
+            ("Auswahl", Tool.Pointer, Geo("M6,3 L6,19 L10,15 L13,21 L15.5,20 L12.5,14 L18,14 Z", true)),
+            ("Pfeil", Tool.Arrow, Geo("M4,20 L19,5 M19,5 L11,5 M19,5 L19,13")),
+            ("Linie", Tool.Line, Geo("M4,20 L20,4")),
+            ("Rahmen", Tool.Rect, Geo("M4,6 H20 V18 H4 Z")),
+            ("Ellipse", Tool.Ellipse, Geo("M3,12 A9,6 0 1 0 21,12 A9,6 0 1 0 3,12")),
+            ("Stift", Tool.Pen, Geo("M3,17 C6,5 9,5 12,12 S18,19 21,7")),
+            ("Marker", Tool.Marker, Glyph("\uE7E6")),
+            ("Text", Tool.Text, Glyph("\uE8D2")),
+            ("Nummer", Tool.Number, NumberIcon()),
+            ("Verpixeln", Tool.Blur, Geo("M4,4 h6 v6 h-6 z M14,4 h6 v6 h-6 z M9,9 h6 v6 h-6 z M4,14 h6 v6 h-6 z M14,14 h6 v6 h-6 z")),
+            ("Zuschneiden", Tool.Crop, Glyph("\uE7A8")),
         };
-        foreach (var (name, t) in tools)
+        var toolGroup = new List<UIElement>();
+        var bildGroup = new List<UIElement>();
+        foreach (var (label, t, icon) in tools)
         {
-            var rb = new RadioButton { Content = name, GroupName = "tools", IsChecked = t == tool };
+            var rb = new RadioButton { Content = WithLabel(icon, label), GroupName = "tools", Style = (Style)FindResource("RibbonTool"), IsChecked = t == tool, ToolTip = label };
             var tt = t;
             rb.Checked += (_, _) =>
             {
@@ -91,38 +201,14 @@ public partial class EditorWindow : Window
                 if (tt == Tool.Crop) StartCrop();
             };
             toolButtons[t] = rb;
-            Bar.Children.Add(rb);
+            (t == Tool.Crop ? bildGroup : toolGroup).Add(rb);
         }
-        cropApplyBtn = new Button { Content = "Zuschnitt anwenden", Background = new SolidColorBrush(Color.FromRgb(0x2E, 0x7D, 0x32)), Visibility = Visibility.Collapsed };
-        cropApplyBtn.Click += (_, _) => ApplyCropNow();
-        cropCancelBtn = new Button { Content = "Abbrechen", Visibility = Visibility.Collapsed };
-        cropCancelBtn.Click += (_, _) => CancelCrop();
-        Bar.Children.Add(cropApplyBtn);
-        Bar.Children.Add(cropCancelBtn);
-        AddSep();
-        var palette = new[] { "#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#000000", "#FFFFFF" };
-        foreach (var hex in palette)
-        {
-            var c = (Color)ColorConverter.ConvertFromString(hex);
-            var sw = new Border
-            {
-                Width = 22, Height = 22, Margin = new Thickness(3, 2, 3, 2), CornerRadius = new CornerRadius(11),
-                Background = new SolidColorBrush(c), BorderThickness = new Thickness(2), Cursor = Cursors.Hand,
-                BorderBrush = c == color ? Brushes.White : Brushes.Transparent,
-            };
-            sw.MouseLeftButtonDown += (_, _) =>
-            {
-                color = c;
-                if (selected != null) ApplyColor(selected, c);
-                foreach (var s in swatches) s.BorderBrush = Brushes.Transparent;
-                sw.BorderBrush = Brushes.White;
-            };
-            swatches.Add(sw);
-            Bar.Children.Add(sw);
-        }
-        AddSep();
-        Bar.Children.Add(new TextBlock { Text = "Stärke", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0), Foreground = Brushes.Gray });
-        var slider = new Slider { Minimum = 1, Maximum = 20, Value = thick, Width = 110, VerticalAlignment = VerticalAlignment.Center, IsSnapToTickEnabled = true, TickFrequency = 1 };
+        bildGroup.Add(cropStack);
+
+        panels["Start"].Children.Add(Group("Bild", bildGroup.ToArray()));
+        panels["Start"].Children.Add(Group("Werkzeuge", toolGroup.ToArray()));
+
+        var slider = new Slider { Minimum = 1, Maximum = 20, Value = thick, Width = 100, VerticalAlignment = VerticalAlignment.Center, IsSnapToTickEnabled = true, TickFrequency = 1, ToolTip = "Strichstärke bzw. Schriftgröße" };
         thickSlider = slider;
         slider.ValueChanged += (_, e) =>
         {
@@ -130,24 +216,38 @@ public partial class EditorWindow : Window
             if (selected != null && ApplyThickness(selected, e.NewValue)) { UpdateSel(); return; }
             thick = e.NewValue;
         };
-        Bar.Children.Add(slider);
-        AddSep();
-        AddButton("−", (_, _) => SetZoom(Zoom.ScaleX / 1.25));
-        AddButton("+", (_, _) => SetZoom(Zoom.ScaleX * 1.25));
-        AddButton("Anpassen", (_, _) => FitZoom());
-        AddButton("100 %", (_, _) => SetZoom(1));
-        AddSep();
-        AddButton("Einstellungen", (_, _) => ((App)Application.Current).ShowSettings());
-    }
+        panels["Start"].Children.Add(Group("Stärke", new Border { Padding = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, Child = slider }));
 
-    void AddButton(string text, RoutedEventHandler click)
-    {
-        var b = new Button { Content = text };
-        b.Click += click;
-        Bar.Children.Add(b);
-    }
+        var palette = new[] { "#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#000000", "#FFFFFF" };
+        var grid = new UniformGrid { Rows = 2, Columns = 4, VerticalAlignment = VerticalAlignment.Center };
+        foreach (var hex in palette)
+        {
+            var c = (Color)ColorConverter.ConvertFromString(hex);
+            var sw = new Border
+            {
+                Width = 22, Height = 22, Margin = new Thickness(3), CornerRadius = new CornerRadius(11),
+                Background = new SolidColorBrush(c), BorderThickness = new Thickness(2), Cursor = Cursors.Hand,
+                BorderBrush = c == color ? Brushes.White : Brushes.Transparent, ToolTip = hex,
+            };
+            sw.MouseLeftButtonDown += (_, _) =>
+            {
+                color = c;
+                if (selected != null) ApplyColor(selected, c);
+                foreach (var s2 in swatches) s2.BorderBrush = Brushes.Transparent;
+                sw.BorderBrush = Brushes.White;
+            };
+            swatches.Add(sw);
+            grid.Children.Add(sw);
+        }
+        panels["Start"].Children.Add(Group("Farben", grid));
 
-    void AddSep() => Bar.Children.Add(new Border { Width = 1, Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)), Margin = new Thickness(6, 2, 6, 2) });
+        // --- Reiter Ansicht ---
+        panels["Ansicht"].Children.Add(Group("Zoom",
+            BigBtn(Glyph("\uE71F"), "Verkleinern", (_, _) => SetZoom(Zoom.ScaleX / 1.25)),
+            BigBtn(Glyph("\uE8A3"), "Vergrößern", (_, _) => SetZoom(Zoom.ScaleX * 1.25)),
+            BigBtn(Glyph("\uE9A6"), "Anpassen", (_, _) => FitZoom(), "An Fenster anpassen"),
+            BigBtn(new TextBlock { Text = "1:1", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Ink, HorizontalAlignment = HorizontalAlignment.Center, Height = 26, Padding = new Thickness(0, 3, 0, 0) }, "100 %", (_, _) => SetZoom(1), "Originalgröße")));
+    }
 
     // ---------- Bild & Zoom ----------
     void SetBitmap(BitmapSource b)
