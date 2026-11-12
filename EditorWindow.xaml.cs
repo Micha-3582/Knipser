@@ -196,7 +196,7 @@ public partial class EditorWindow : Window
             CornerRadius = new CornerRadius(4), Padding = new Thickness(3), Child = panel,
             Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5 },
         };
-        pop.IsOpen = true;
+        OpenPopup(pop);
     }
 
     // ---------- Bild als Element einfügen ----------
@@ -315,7 +315,7 @@ public partial class EditorWindow : Window
             CornerRadius = new CornerRadius(4), Padding = new Thickness(3), Child = panel,
             Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5 },
         };
-        pop.IsOpen = true;
+        OpenPopup(pop);
     }
 
     /// <summary>Weichheit der Kante in Pixeln (0 = hart), abhängig von der Größe der Form.</summary>
@@ -556,7 +556,7 @@ public partial class EditorWindow : Window
             CornerRadius = new CornerRadius(4), Padding = new Thickness(3), Child = panel,
             Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5 },
         };
-        pop.IsOpen = true;
+        OpenPopup(pop);
     }
 
     void StartPick()
@@ -595,6 +595,31 @@ public partial class EditorWindow : Window
             return Color.FromRgb((byte)Math.Round(rs / (double)cnt), (byte)Math.Round(gs / (double)cnt), (byte)Math.Round(bs / (double)cnt));
         }
         catch { return null; }
+    }
+
+    // ---------- Untermenüs: schließen, sobald das Fenster verschoben wird ----------
+    readonly List<Popup> openPopups = new();
+    bool popupHooksDone;
+
+    void OpenPopup(Popup pop)
+    {
+        if (!popupHooksDone)
+        {
+            popupHooksDone = true;
+            LocationChanged += (_, _) => CloseAllPopups();
+            SizeChanged += (_, _) => CloseAllPopups();
+            StateChanged += (_, _) => CloseAllPopups();
+            Deactivated += (_, _) => CloseAllPopups();
+        }
+        pop.Closed += (_, _) => openPopups.Remove(pop);
+        openPopups.Add(pop);
+        pop.IsOpen = true;
+    }
+
+    void CloseAllPopups()
+    {
+        foreach (var p in openPopups.ToArray()) p.IsOpen = false;
+        openPopups.Clear();
     }
 
     // ---------- Pfeil-Untermenü (Ecke am Symbol, langer Druck oder Rechtsklick) ----------
@@ -671,7 +696,7 @@ public partial class EditorWindow : Window
             CornerRadius = new CornerRadius(4), Padding = new Thickness(3), Child = panel,
             Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5 },
         };
-        pop.IsOpen = true;
+        OpenPopup(pop);
     }
 
     void BuildToolbar()
@@ -2143,7 +2168,7 @@ public partial class EditorWindow : Window
             CornerRadius = new CornerRadius(4), Padding = new Thickness(3), Child = panel,
             Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5 },
         };
-        pop.IsOpen = true;
+        OpenPopup(pop);
     }
 
     /// <summary>Füllt per Klick: Fläche (zusammenhängend) oder alle ähnlichen Farben im Bild. Die Stärke bestimmt die Toleranz.</summary>
