@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -90,6 +90,8 @@ internal class SelectionOverlay : Window
     readonly Rectangle centerBox = new() { Stroke = Brushes.Red, StrokeThickness = 1.5, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     readonly Border loupeInfo = new() { Background = new SolidColorBrush(Color.FromArgb(0xDD, 0x20, 0x20, 0x20)), CornerRadius = new CornerRadius(3), Padding = new Thickness(6, 2, 6, 2), IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     readonly TextBlock loupeText = new() { Foreground = Brushes.White, FontSize = 12 };
+    // Fadenkreuz-Hilfslinien über den ganzen Bildschirm (schwarz unterlegt + weiß gestrichelt, auf jedem Hintergrund sichtbar)
+    readonly Line[] guideDark = { new(), new() }, guideLight = { new(), new() };
     bool loupeInit;
     Point lastPos;
 
@@ -98,6 +100,8 @@ internal class SelectionOverlay : Window
         if (!loupeInit)
         {
             loupeInfo.Child = loupeText;
+            foreach (var l in guideDark) { l.Stroke = new SolidColorBrush(Color.FromArgb(0xAA, 0, 0, 0)); l.StrokeThickness = 3; l.IsHitTestVisible = false; cv.Children.Add(l); }
+            foreach (var l in guideLight) { l.Stroke = Brushes.White; l.StrokeThickness = 1; l.StrokeDashArray = new DoubleCollection { 4, 4 }; l.IsHitTestVisible = false; cv.Children.Add(l); }
             cv.Children.Add(loupe); cv.Children.Add(centerBox); cv.Children.Add(loupeInfo);
             loupe.Width = loupe.Height = LoupeSize;
             loupeInit = true;
@@ -106,6 +110,9 @@ internal class SelectionOverlay : Window
         double kx = shot.PixelWidth / cv.ActualWidth, ky = shot.PixelHeight / cv.ActualHeight;
         int px = Math.Clamp((int)Math.Floor(p.X * kx), 0, shot.PixelWidth - 1);
         int py = Math.Clamp((int)Math.Floor(p.Y * ky), 0, shot.PixelHeight - 1);
+        double gx = (px + 0.5) / kx, gy = (py + 0.5) / ky;
+        foreach (var l in new[] { guideDark[0], guideLight[0] }) { l.X1 = 0; l.X2 = cv.ActualWidth; l.Y1 = l.Y2 = gy; }
+        foreach (var l in new[] { guideDark[1], guideLight[1] }) { l.Y1 = 0; l.Y2 = cv.ActualHeight; l.X1 = l.X2 = gx; }
         int zoom = Zooms[zoomIdx];
         int n = (int)(LoupeSize / zoom) | 1;
         loupe.Fill = new ImageBrush(shot)
