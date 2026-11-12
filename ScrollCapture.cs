@@ -21,22 +21,31 @@ internal static class ScrollCapture
     public static async Task<BitmapSource?> Run(Drawing.Rectangle r)
     {
         SetCursorPos(r.X + r.Width / 2, r.Y + r.Height / 2);
-        await Task.Delay(300);
+        await Task.Delay(350);
 
         int w = r.Width, h = r.Height;
-        var first = Pixels(Capture.Grab(r), w, h);
+        var first = await Settle(r, w, h);
         var parts = new List<byte[]> { first };   // zusammengesetzte Zeilenblöcke
         int totalRows = h;
         var prev = first;
 
         for (int i = 0; i < MaxFrames && totalRows < MaxHeight; i++)
         {
-            mouse_event(MOUSEEVENTF_WHEEL, 0, 0, -120 * 3, 0);
-            await Task.Delay(350);
-            var cur = Pixels(Capture.Grab(r), w, h);
+            // Mausrad drehen und warten, bis die Seite (auch bei weichem Scrollen) wirklich still steht.
+            // Hat sich nichts getan, einmal nachlegen, bevor wir das Seitenende annehmen.
+            byte[]? cur = null;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                mouse_event(MOUSEEVENTF_WHEEL, 0, 0, -120 * 3, 0);
+                await Task.Delay(300);
+                cur = await Settle(r, w, h);
+                if (!cur.AsSpan().SequenceEqual(prev)) break;
+                await Task.Delay(300);
+            }
+            if (cur == null || cur.AsSpan().SequenceEqual(prev)) break;   // Ende der Seite
 
             int s = FindShift(prev, cur, w, h);
-            if (s <= 0) break;                 // nichts mehr gescrollt oder nicht zuordenbar
+            if (s <= 0) break;                 // nicht zuordenbar
             var add = new byte[s * w * 4];
             Buffer.BlockCopy(cur, (h - s) * w * 4, add, 0, add.Length);
             parts.Add(add);
@@ -52,6 +61,20 @@ internal static class ScrollCapture
         return bmp;
     }
 
+    /// <summary>Fotografiert so lange, bis zwei Aufnahmen hintereinander gleich sind (Scroll-Animation vorbei).</summary>
+    static async Task<byte[]> Settle(Drawing.Rectangle r, int w, int h)
+    {
+        var a = Pixels(Capture.Grab(r), w, h);
+        for (int i = 0; i < 15; i++)
+        {
+            await Task.Delay(120);
+            var b = Pixels(Capture.Grab(r), w, h);
+            if (a.AsSpan().SequenceEqual(b)) return b;
+            a = b;
+        }
+        return a;
+    }
+
     static byte[] Pixels(BitmapSource src, int w, int h)
     {
         var buf = new byte[w * h * 4];
@@ -59,40 +82,52 @@ internal static class ScrollCapture
         return buf;
     }
 
-    static ulong[] RowHashes(byte[] px, int w, int h)
+    /// <summary>Zeilen-Hashes plus Kennzeichen, ob die Zeile Inhalt hat (nicht einfarbig).</summary>
+    static (ulong[] hash, bool[] info) RowInfo(byte[] px, int w, int h)
     {
         var hs = new ulong[h];
+        var info = new bool[h];
         int stride = w * 4;
         for (int y = 0; y < h; y++)
         {
             ulong x = 1469598103934665603UL;
             int o = y * stride;
-            for (int i = 0; i < stride; i++) { x ^= px[o + i]; x *= 1099511628211UL; }
+            bool uniform = true;
+            for (int i = 0; i < stride; i++)
+            {
+                byte v = px[o + i];
+                x ^= v; x *= 1099511628211UL;
+                if (uniform && i >= 4 && v != px[o + (i & 3)]) uniform = false;
+            }
             hs[y] = x;
+            info[y] = !uniform;
         }
-        return hs;
+        return (hs, info);
     }
 
-    /// <summary>Um wie viele Zeilen ist cur gegenüber prev nach oben gewandert? 0 = gleich/nicht gefunden.</summary>
+    /// <summary>
+    /// Um wie viele Zeilen ist cur gegenüber prev nach oben gewandert? 0 = nicht gefunden.
+    /// Zählt übereinstimmende Zeilen mit Inhalt; feste Kopf-/Fußleisten und Werbung stören dadurch kaum.
+    /// </summary>
     static int FindShift(byte[] prev, byte[] cur, int w, int h)
     {
-        var a = RowHashes(prev, w, h);
-        var b = RowHashes(cur, w, h);
+        var (a, _) = RowInfo(prev, w, h);
+        var (b, infoB) = RowInfo(cur, w, h);
 
-        bool same = true;
-        for (int y = 0; y < h; y++) if (a[y] != b[y]) { same = false; break; }
-        if (same) return 0;
-
-        // Zuerst große Überlappung (kleine Verschiebung) prüfen
+        int bestS = 0, bestMatches = 0;
+        double bestRatio = 0;
         for (int s = 1; s < h - 8; s++)
         {
-            int n = h - s, bad = 0, limit = n / 50;   // 2 % Abweichung erlaubt (Cursor, Animationen)
+            int n = h - s, info = 0, match = 0;
             for (int y = 0; y < n; y++)
             {
-                if (a[y + s] != b[y] && ++bad > limit) break;
+                if (!infoB[y]) continue;
+                info++;
+                if (a[y + s] == b[y]) match++;
             }
-            if (bad <= limit) return s;
+            if (info == 0) continue;
+            if (match > bestMatches) { bestMatches = match; bestS = s; bestRatio = (double)match / info; }
         }
-        return 0;
+        return bestMatches >= 3 && bestRatio >= 0.55 ? bestS : 0;
     }
 }
