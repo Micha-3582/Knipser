@@ -16,8 +16,10 @@ internal class ColorPickerWindow : Window
     public event Action<Color>? Applied;
 
     const double Size = 220;
+    // Reihe 1: grelle Signalfarben (zum Markieren), Reihe 2: Standardfarben, Reihe 3: weitere
     static readonly string[] Presets =
     {
+        "#FF0000", "#FF7A00", "#FFE600", "#00E640", "#00D5FF", "#0066FF", "#B300FF", "#FF00A8",
         "#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#000000", "#FFFFFF",
         "#EC407A", "#26A69A", "#795548", "#3949AB", "#9E9E9E", "#37474F", "#CDDC39", "#00BCD4",
     };
@@ -34,7 +36,7 @@ internal class ColorPickerWindow : Window
     readonly Border newBox = new() { Height = 44, CornerRadius = new CornerRadius(4, 4, 0, 0), BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), BorderThickness = new Thickness(1) };
     readonly Border oldBox = new() { Height = 28, CornerRadius = new CornerRadius(0, 0, 4, 4), BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), BorderThickness = new Thickness(1), Cursor = Cursors.Hand, ToolTip = "Ursprüngliche Farbe wiederherstellen" };
     readonly TextBox hex = Box(80), tr = Box(46), tg = Box(46), tb = Box(46);
-    readonly WrapPanel customPanel = new() { Width = 300, HorizontalAlignment = HorizontalAlignment.Left };
+    readonly WrapPanel customPanel = new() { Width = 8 * 28, HorizontalAlignment = HorizontalAlignment.Left };
 
     public Color Current => FromHsv(h, s, v);
 
@@ -129,7 +131,7 @@ internal class ColorPickerWindow : Window
         top.Children.Add(sv); top.Children.Add(hueGrid); top.Children.Add(right);
 
         // --- Vorgaben und eigene Farben ---
-        var presetPanel = new WrapPanel { Width = 300, HorizontalAlignment = HorizontalAlignment.Left };
+        var presetPanel = new WrapPanel { Width = 8 * 28, HorizontalAlignment = HorizontalAlignment.Left };
         foreach (var hx in Presets)
         {
             var c = (Color)ColorConverter.ConvertFromString(hx);

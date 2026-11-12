@@ -591,21 +591,6 @@ public partial class EditorWindow : Window
         };
         panels["Start"].Children.Add(Group("Stärke", new Border { Padding = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, Child = slider }));
 
-        var palette = new[] { "#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#000000", "#FFFFFF" };
-        var grid = new UniformGrid { Rows = 2, Columns = 4, VerticalAlignment = VerticalAlignment.Center };
-        foreach (var hex in palette)
-        {
-            var c = (Color)ColorConverter.ConvertFromString(hex);
-            var sw = new Border
-            {
-                Width = 22, Height = 22, Margin = new Thickness(3), CornerRadius = new CornerRadius(11),
-                Background = new SolidColorBrush(c), BorderThickness = new Thickness(2), Cursor = Cursors.Hand,
-                BorderBrush = c == color ? Brushes.White : Brushes.Transparent, ToolTip = hex,
-            };
-            sw.MouseLeftButtonDown += (_, _) => SetColor(c);
-            swatches.Add(sw);
-            grid.Children.Add(sw);
-        }
         colorBox = new Border
         {
             Width = 26, Height = 26, CornerRadius = new CornerRadius(5), Background = new SolidColorBrush(color), BorderThickness = new Thickness(1.5),
@@ -613,8 +598,7 @@ public partial class EditorWindow : Window
         };
         panels["Start"].Children.Add(Group("Farben",
             BigBtn(PipetteIcon(32), "Pipette", (_, _) => StartPick(), "Pipette: Farbe direkt aus dem Bild aufnehmen (Esc = abbrechen)"),
-            BigBtn(colorBox, "Farbe", (_, _) => ShowColorPicker(), "Farbwähler öffnen: Spektrum, Vorgaben und eigene Farben"),
-            grid));
+            BigBtn(colorBox, "Farbe", (_, _) => ShowColorPicker(), "Farbwähler öffnen: Vorgaben, Spektrum und eigene Farben")));
 
         // --- Reiter Ansicht ---
         panels["Ansicht"].Children.Add(Group("Zoom",
