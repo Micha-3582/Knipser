@@ -1133,27 +1133,51 @@ public partial class EditorWindow : Window
         }
     }
 
-    /// <summary>Schlagschatten um das ganze Bild: Rand mit weichem Schatten (PNG: transparent, JPG: weiß).</summary>
-    void ApplyImageShadow()
+    // ---------- Vorschau-Hilfe für Dialoge (verzögert, damit Schieberegler flüssig bleiben) ----------
+    System.Windows.Threading.DispatcherTimer? prevTimer;
+    Action? prevJob;
+
+    void QueuePreview(Action job)
     {
-        CommitText();
-        Select(null);
-        var dlg = new ShadowDialog(settings.ShadowOffset, settings.ShadowBlur, settings.ShadowOpacity, settings.ShadowRadius) { Owner = this };
-        if (dlg.ShowDialog() != true) return;
-        settings.ShadowOffset = dlg.Offset; settings.ShadowBlur = dlg.Blur; settings.ShadowOpacity = dlg.Opacity; settings.ShadowRadius = dlg.Radius;
-        settings.Save();
-        DoImageShadow(dlg.Offset, dlg.Blur, dlg.Opacity / 100.0, dlg.Radius);
+        prevJob = job;
+        if (prevTimer == null)
+        {
+            prevTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+            prevTimer.Tick += (_, _) => { prevTimer.Stop(); prevJob?.Invoke(); };
+        }
+        prevTimer.Stop();
+        prevTimer.Start();
     }
 
-    void DoImageShadow(int offset, int rad, double opacity, int radius)
+    bool IsPng => settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Bild mit Rahmen (rund auf Wunsch). Außen transparent (PNG) oder weiß (JPG).</summary>
+    BitmapSource BuildFrame(BitmapSource old, int b, Color color, int radius)
+    {
+        int iw = old.PixelWidth, ih = old.PixelHeight, W = iw + 2 * b, H = ih + 2 * b;
+        double outer = Math.Min(radius, Math.Min(W, H) / 2.0), inner = Math.Max(0, outer - b);
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            if (!IsPng && outer > 0) dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, W, H));
+            dc.DrawRoundedRectangle(new SolidColorBrush(color), null, new Rect(0, 0, W, H), outer, outer);
+            dc.PushClip(new RectangleGeometry(new Rect(b, b, iw, ih), inner, inner));
+            dc.DrawImage(old, new Rect(b, b, iw, ih));
+            dc.Pop();
+        }
+        var nb = new RenderTargetBitmap(W, H, 96, 96, PixelFormats.Pbgra32);
+        nb.Render(dv);
+        nb.Freeze();
+        return nb;
+    }
+
+    /// <summary>Bild mit weichem Schlagschatten. Liefert das neue Bild und den Rand, um den die Elemente verschoben werden.</summary>
+    (BitmapSource bmp, int margin) BuildShadow(BitmapSource old, int offset, int rad, double opacity, int radius)
     {
         int dx = offset, dy = (int)Math.Round(offset * 1.3), m = rad * 3 + offset + 4;
-        var old = bmp;
         int iw = old.PixelWidth, ih = old.PixelHeight, W = iw + 2 * m, H = ih + 2 * m;
-        bool transparent = settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
         double rr = Math.Min(radius, Math.Min(iw, ih) / 2.0);
 
-        // Schattenform (auch mit runden Ecken) als Maske zeichnen und weichzeichnen
         var mdv = new DrawingVisual();
         using (var dc = mdv.RenderOpen())
             dc.DrawRoundedRectangle(Brushes.Black, null, new Rect(m + dx, m + dy, iw, ih), rr, rr);
@@ -1163,12 +1187,13 @@ public partial class EditorWindow : Window
         mrt.CopyPixels(mask, W * 4, 0);
         BlurBgra(mask, W, H, rad);
 
+        bool png = IsPng;
         var sh = new byte[W * H * 4];
         for (int i = 0; i < W * H; i++)
         {
             double a = mask[i * 4 + 3] / 255.0 * opacity;
             int o = i * 4;
-            if (transparent) { sh[o] = sh[o + 1] = sh[o + 2] = 0; sh[o + 3] = (byte)(a * 255 + 0.5); }
+            if (png) { sh[o] = sh[o + 1] = sh[o + 2] = 0; sh[o + 3] = (byte)(a * 255 + 0.5); }
             else { byte v = (byte)(255 * (1 - a) + 0.5); sh[o] = sh[o + 1] = sh[o + 2] = v; sh[o + 3] = 255; }
         }
         var shBmp = BitmapSource.Create(W, H, 96, 96, PixelFormats.Bgra32, null, sh, W * 4);
@@ -1183,54 +1208,65 @@ public partial class EditorWindow : Window
         var nb = new RenderTargetBitmap(W, H, 96, 96, PixelFormats.Pbgra32);
         nb.Render(dv);
         nb.Freeze();
+        return (nb, m);
+    }
 
-        Action doIt = () => { SetBitmap(nb); Shift(m, m); };
-        Action undo = () => { SetBitmap(old); Shift(-m, -m); };
+    void CommitBitmapEffect(BitmapSource old, BitmapSource nb, int shift)
+    {
+        Action doIt = () => { SetBitmap(nb); Shift(shift, shift); };
+        Action undo = () => { SetBitmap(old); Shift(-shift, -shift); };
         doIt();
         Push(undo, doIt);
         RefreshSel();
         FitZoom();
     }
 
-    /// <summary>Rahmen um das ganze Bild in der gewählten Farbe; Breite = Stärke-Regler (mindestens 2 px).</summary>
+    /// <summary>Schlagschatten um das ganze Bild – mit Live-Vorschau beim Einstellen.</summary>
+    void ApplyImageShadow()
+    {
+        CommitText();
+        Select(null);
+        var orig = bmp;
+        int shifted = 0;
+        var dlg = new ShadowDialog(settings.ShadowOffset, settings.ShadowBlur, settings.ShadowOpacity, settings.ShadowRadius, (o, bl, op, r) =>
+            QueuePreview(() =>
+            {
+                var (pv, m) = BuildShadow(orig, o, bl, op / 100.0, r);
+                SetBitmap(pv); Shift(m - shifted, m - shifted); shifted = m;
+            })) { Owner = this };
+        bool ok = dlg.ShowDialog() == true;
+        prevTimer?.Stop();
+        SetBitmap(orig); Shift(-shifted, -shifted);      // Vorschau zurücknehmen
+        if (!ok) { FitZoom(); return; }
+        settings.ShadowOffset = dlg.Offset; settings.ShadowBlur = dlg.Blur; settings.ShadowOpacity = dlg.Opacity; settings.ShadowRadius = dlg.Radius;
+        settings.Save();
+        var (nb, margin) = BuildShadow(orig, dlg.Offset, dlg.Blur, dlg.Opacity / 100.0, dlg.Radius);
+        CommitBitmapEffect(orig, nb, margin);
+    }
+
+    /// <summary>Rahmen um das ganze Bild – mit Live-Vorschau beim Einstellen.</summary>
     void ApplyImageFrame()
     {
         CommitText();
         Select(null);
         Color start;
         try { start = (Color)ColorConverter.ConvertFromString(settings.FrameColor); } catch { start = Color.FromRgb(0xE5, 0x39, 0x35); }
-        var dlg = new FrameDialog(settings.FrameWidth, start, settings.FrameRadius) { Owner = this };
-        if (dlg.ShowDialog() != true) return;
+        var orig = bmp;
+        int shifted = 0;
+        var dlg = new FrameDialog(settings.FrameWidth, start, settings.FrameRadius, (b, c, r) =>
+            QueuePreview(() =>
+            {
+                SetBitmap(BuildFrame(orig, b, c, r));
+                Shift(b - shifted, b - shifted); shifted = b;
+            })) { Owner = this };
+        bool ok = dlg.ShowDialog() == true;
+        prevTimer?.Stop();
+        SetBitmap(orig); Shift(-shifted, -shifted);      // Vorschau zurücknehmen
+        if (!ok) { FitZoom(); return; }
         settings.FrameWidth = dlg.FrameWidth; settings.FrameRadius = dlg.Radius;
         settings.FrameColor = $"#{dlg.FrameColor.R:X2}{dlg.FrameColor.G:X2}{dlg.FrameColor.B:X2}";
         settings.Save();
-        DoImageFrame(dlg.FrameWidth, dlg.FrameColor, dlg.Radius);
-    }
-
-    void DoImageFrame(int b, Color color, int radius)
-    {
-        var old = bmp;
-        int iw = old.PixelWidth, ih = old.PixelHeight, W = iw + 2 * b, H = ih + 2 * b;
-        bool transparent = settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
-        double outer = Math.Min(radius, Math.Min(W, H) / 2.0), inner = Math.Max(0, outer - b);
-        var dv = new DrawingVisual();
-        using (var dc = dv.RenderOpen())
-        {
-            if (!transparent && outer > 0) dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, W, H));   // JPG: Ecken außen weiß
-            dc.DrawRoundedRectangle(new SolidColorBrush(color), null, new Rect(0, 0, W, H), outer, outer);
-            dc.PushClip(new RectangleGeometry(new Rect(b, b, iw, ih), inner, inner));
-            dc.DrawImage(old, new Rect(b, b, iw, ih));
-            dc.Pop();
-        }
-        var nb = new RenderTargetBitmap(W, H, 96, 96, PixelFormats.Pbgra32);
-        nb.Render(dv);
-        nb.Freeze();
-        Action doIt = () => { SetBitmap(nb); Shift(b, b); };
-        Action undo = () => { SetBitmap(old); Shift(-b, -b); };
-        doIt();
-        Push(undo, doIt);
-        RefreshSel();
-        FitZoom();
+        CommitBitmapEffect(orig, BuildFrame(orig, dlg.FrameWidth, dlg.FrameColor, dlg.Radius), dlg.FrameWidth);
     }
 
     /// <summary>Bild in Graustufen umwandeln (Markierungen darüber behalten ihre Farbe).</summary>

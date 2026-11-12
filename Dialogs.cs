@@ -28,6 +28,18 @@ internal abstract class DarkDialog : Window
         Ok.Click += (_, _) => { DialogResult = true; };
     }
 
+    /// <summary>Dialog an den rechten Rand des Editors setzen, damit das Bild (Live-Vorschau) sichtbar bleibt.</summary>
+    protected void PlaceRight()
+    {
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Loaded += (_, _) =>
+        {
+            if (Owner == null) return;
+            Left = Owner.Left + Owner.ActualWidth - ActualWidth - 24;
+            Top = Owner.Top + 150;
+        };
+    }
+
     protected static TextBox Field(double width = 80) => new()
     {
         Width = width, Padding = new Thickness(5, 3, 5, 3),
@@ -106,6 +118,7 @@ internal class BrightnessDialog : DarkDialog
 
     public BrightnessDialog(Action<int, int> preview) : base("Helligkeit und Kontrast")
     {
+        PlaceRight();
         var bt = new TextBlock { Width = 36, Text = "0", TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
         var ct = new TextBlock { Width = 36, Text = "0", TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
         var r1 = new StackPanel { Orientation = Orientation.Horizontal }; r1.Children.Add(bs); r1.Children.Add(bt);
@@ -132,19 +145,25 @@ internal class FrameDialog : DarkDialog
 
     static readonly string[] Palette = { "#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#000000", "#FFFFFF", "#9E9E9E", "#37474F" };
 
-    public FrameDialog(int width, Color color, int radius) : base("Rahmen um das Bild")
+    readonly Action<int, Color, int>? preview;
+
+    void Fire() => preview?.Invoke(FrameWidth, FrameColor, Radius);
+
+    public FrameDialog(int width, Color color, int radius, Action<int, Color, int>? preview = null) : base("Rahmen um das Bild")
     {
+        this.preview = preview;
+        PlaceRight();
         rs.Value = Math.Clamp(radius, 0, 100);
         FrameColor = color;
         ws.Value = Math.Clamp(width, 1, 100);
         var wt = new TextBlock { Width = 50, Text = $"{(int)ws.Value} px", TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
         var r1 = new StackPanel { Orientation = Orientation.Horizontal }; r1.Children.Add(ws); r1.Children.Add(wt);
         Body.Children.Add(Line("Breite", r1));
-        ws.ValueChanged += (_, _) => wt.Text = $"{(int)ws.Value} px";
+        ws.ValueChanged += (_, _) => { wt.Text = $"{(int)ws.Value} px"; Fire(); };
         var rt = new TextBlock { Width = 50, Text = $"{(int)rs.Value} px", TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
         var r2 = new StackPanel { Orientation = Orientation.Horizontal }; r2.Children.Add(rs); r2.Children.Add(rt);
         Body.Children.Add(Line("Eckenradius", r2));
-        rs.ValueChanged += (_, _) => rt.Text = $"{(int)rs.Value} px";
+        rs.ValueChanged += (_, _) => { rt.Text = $"{(int)rs.Value} px"; Fire(); };
 
         var sw = new WrapPanel { Width = 230 };
         foreach (var h in Palette)
@@ -166,11 +185,13 @@ internal class FrameDialog : DarkDialog
             try { var c = (Color)ColorConverter.ConvertFromString(hex.Text.Trim()); busy = true; Pick(c, false); busy = false; } catch { }
         };
         Pick(color);
+        Loaded += (_, _) => Fire();
     }
 
     void Pick(Color c, bool setHex = true)
     {
         FrameColor = c;
+        Fire();
         foreach (var b in swatches) b.BorderBrush = (Color)b.Tag == c ? Brushes.White : Brushes.Transparent;
         if (setHex) { busy = true; hex.Text = $"#{c.R:X2}{c.G:X2}{c.B:X2}"; busy = false; }
     }
@@ -188,17 +209,24 @@ internal class ShadowDialog : DarkDialog
     readonly Slider bs = new() { Minimum = 1, Maximum = 30, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
     readonly Slider ps = new() { Minimum = 10, Maximum = 100, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
 
-    public ShadowDialog(int offset, int blur, int opacity, int radius) : base("Schlagschatten um das Bild")
+    readonly Action<int, int, int, int>? preview;
+
+    void Fire() => preview?.Invoke(Offset, Blur, Opacity, Radius);
+
+    public ShadowDialog(int offset, int blur, int opacity, int radius, Action<int, int, int, int>? preview = null) : base("Schlagschatten um das Bild")
     {
+        this.preview = preview;
+        PlaceRight();
         rs.Value = Math.Clamp(radius, 0, 100);
         os.Value = Math.Clamp(offset, 0, 30); bs.Value = Math.Clamp(blur, 1, 30); ps.Value = Math.Clamp(opacity, 10, 100);
         void Row(string label, Slider s, string unit)
         {
             var t = new TextBlock { Width = 50, Text = $"{(int)s.Value}{unit}", TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
             var r = new StackPanel { Orientation = Orientation.Horizontal }; r.Children.Add(s); r.Children.Add(t);
-            s.ValueChanged += (_, _) => t.Text = $"{(int)s.Value}{unit}";
+            s.ValueChanged += (_, _) => { t.Text = $"{(int)s.Value}{unit}"; Fire(); };
             Body.Children.Add(Line(label, r));
         }
         Row("Abstand", os, " px"); Row("Weichheit", bs, " px"); Row("Deckkraft", ps, " %"); Row("Eckenradius", rs, " px");
+        Loaded += (_, _) => Fire();
     }
 }
