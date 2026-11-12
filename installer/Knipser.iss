@@ -68,13 +68,16 @@ end;
 // .NET 8 Desktop Runtime vorhanden? (Knipser ist ein kleines Programm, das die Runtime nutzt)
 function HasDotNet8(): Boolean;
 var
-  names: TArrayOfString;
-  i: Integer;
+  r: TFindRec;
 begin
+  // Ordner der Desktop Runtime 8.x suchen (die Registry-Prüfung war unzuverlässig)
   Result := False;
-  if RegGetValueNames(HKLM64, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfw\Microsoft.WindowsDesktop.App', names) then
-    for i := 0 to GetArrayLength(names) - 1 do
-      if Copy(names[i], 1, 2) = '8.' then Result := True;
+  if FindFirst(ExpandConstant('{commonpf64}\dotnet\shared\Microsoft.WindowsDesktop.App\8.*'), r) then
+  try
+    Result := True;
+  finally
+    FindClose(r);
+  end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
