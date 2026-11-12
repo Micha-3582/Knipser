@@ -227,13 +227,18 @@ internal class ColorPickerWindow : Window
     }
 
     // ---------- Live-Vorschau (Maus über dem Bild) ----------
-    /// <summary>Zeigt die Farbe unter dem Mauszeiger im großen „neu“-Feld, ohne sie schon zu übernehmen.</summary>
-    public void ShowPreview(Color c)
+    /// <summary>Zeigt die Farbe unter dem Mauszeiger überall im Farbwähler (Spektrumfläche, Farbtonleiste, Felder), ohne sie schon zu übernehmen.</summary>
+    public void ShowPreview(Color col)
     {
-        newBox.Background = new SolidColorBrush(c);
+        ToHsv(col, out double ph, out double ps, out double pv);
+        if (ps <= 0.001 || pv <= 0.001) ph = h;     // bei Grau/Schwarz den Farbton nicht springen lassen
+        newBox.Background = new SolidColorBrush(col);
+        hueBrush.Color = FromHsv(ph, 1, 1);
+        Canvas.SetLeft(marker, ps * Size - 7); Canvas.SetTop(marker, (1 - pv) * Size - 7);
+        Canvas.SetLeft(hueMarker, 0); Canvas.SetTop(hueMarker, ph / 359.999 * Size - 2.5);
         busy = true;
-        hex.Text = $"{c.R:X2}{c.G:X2}{c.B:X2}";
-        tr.Text = c.R.ToString(); tg.Text = c.G.ToString(); tb.Text = c.B.ToString();
+        hex.Text = $"{col.R:X2}{col.G:X2}{col.B:X2}";
+        tr.Text = col.R.ToString(); tg.Text = col.G.ToString(); tb.Text = col.B.ToString();
         busy = false;
     }
 

@@ -123,6 +123,7 @@
                 <Canvas x:Name="Sel"/>
             </Grid>
         </ScrollViewer>
+        <Canvas x:Name="LoupeLayer" IsHitTestVisible="False"/>
         <StackPanel x:Name="CropBar" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0"/>
         </Grid>
     </DockPanel>

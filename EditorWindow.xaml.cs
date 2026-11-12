@@ -279,6 +279,49 @@ public partial class EditorWindow : Window
         return new Viewbox { Width = size, Height = size, Child = grid, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, (26 - size) / 2, 0, (26 - size) / 2) };
     }
 
+    // ---------- Lupe für die Pipette ----------
+    const double LoupeSize = 150;
+    readonly Ellipse loupeCircle = new() { Width = LoupeSize, Height = LoupeSize, Stroke = Brushes.White, StrokeThickness = 2, IsHitTestVisible = false, Visibility = Visibility.Collapsed, Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 0, Opacity = 0.8 } };
+    readonly Rectangle loupeBox = new() { Stroke = Brushes.Red, StrokeThickness = 1.5, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    readonly Border loupeInfo = new() { Background = new SolidColorBrush(Color.FromArgb(0xDD, 0x20, 0x20, 0x20)), CornerRadius = new CornerRadius(3), Padding = new Thickness(6, 2, 6, 2), IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    readonly TextBlock loupeText = new() { Foreground = Brushes.White, FontSize = 12 };
+    bool loupeInit;
+
+    void ShowLoupe(Point pImg, Point pLayer, Color? c)
+    {
+        if (!loupeInit)
+        {
+            loupeInfo.Child = loupeText;
+            LoupeLayer.Children.Add(loupeCircle); LoupeLayer.Children.Add(loupeBox); LoupeLayer.Children.Add(loupeInfo);
+            loupeInit = true;
+        }
+        int px = (int)Math.Floor(pImg.X), py = (int)Math.Floor(pImg.Y);
+        if (px < 0 || py < 0 || px >= bmp.PixelWidth || py >= bmp.PixelHeight) { HideLoupe(); return; }
+        int sample = Math.Max(1, settings.PickSample);
+        int n = (sample > 11 ? sample + 6 : 15) | 1;
+        loupeCircle.Fill = new ImageBrush(bmp)
+        {
+            ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(px + 0.5 - n / 2.0, py + 0.5 - n / 2.0, n, n), Stretch = Stretch.Fill,
+        };
+        RenderOptions.SetBitmapScalingMode(loupeCircle, BitmapScalingMode.NearestNeighbor);
+        double lx = pLayer.X + 26, ly = pLayer.Y + 26;
+        double lw = LoupeLayer.ActualWidth, lh = LoupeLayer.ActualHeight;
+        if (lx + LoupeSize > lw || (cpWin != null && pLayer.X - 26 - LoupeSize >= 0)) lx = pLayer.X - 26 - LoupeSize;   // bei offenem Farbwähler links vom Zeiger
+        if (ly + LoupeSize + 32 > lh) ly = pLayer.Y - 26 - LoupeSize - 32;
+        Canvas.SetLeft(loupeCircle, lx); Canvas.SetTop(loupeCircle, ly);
+        double cell = LoupeSize / n, box = Math.Min(LoupeSize - 4, cell * sample);
+        loupeBox.Width = loupeBox.Height = box;
+        Canvas.SetLeft(loupeBox, lx + (LoupeSize - box) / 2); Canvas.SetTop(loupeBox, ly + (LoupeSize - box) / 2);
+        loupeText.Text = c is Color cc ? $"#{cc.R:X2}{cc.G:X2}{cc.B:X2}   x {px}  y {py}" : $"x {px}  y {py}";
+        Canvas.SetLeft(loupeInfo, lx); Canvas.SetTop(loupeInfo, ly + LoupeSize + 6);
+        loupeCircle.Visibility = loupeBox.Visibility = loupeInfo.Visibility = Visibility.Visible;
+    }
+
+    void HideLoupe()
+    {
+        loupeCircle.Visibility = loupeBox.Visibility = loupeInfo.Visibility = Visibility.Collapsed;
+    }
+
     bool picking;
     Border? colorBox;
     ColorPickerWindow? cpWin;
@@ -347,6 +390,7 @@ public partial class EditorWindow : Window
         cpWin.Closed += (_, _) =>
         {
             cpWin = null;
+            HideLoupe();
             Art.Cursor = tool == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
             Status.Text = $"{bmp.PixelWidth} × {bmp.PixelHeight} px";
         };
@@ -410,6 +454,7 @@ public partial class EditorWindow : Window
     void EndPick()
     {
         picking = false;
+        HideLoupe();
         if (colorBox != null) colorBox.Background = new SolidColorBrush(color);
         Art.Cursor = cpWin != null ? PipetteCursor() : tool == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
         Status.Text = $"{bmp.PixelWidth} × {bmp.PixelHeight} px";
@@ -518,6 +563,7 @@ public partial class EditorWindow : Window
         Art.MouseLeave += (_, _) =>
         {
             cpWin?.ClearPreview();
+            HideLoupe();
             if (picking && colorBox != null) colorBox.Background = new SolidColorBrush(color);
         };
         var panels = new Dictionary<string, StackPanel>();
@@ -841,6 +887,7 @@ public partial class EditorWindow : Window
         var p = e.GetPosition(Art);
         if (picking || cpWin != null)
         {
+            ShowLoupe(p, e.GetPosition(LoupeLayer), SampleAt(p));
             if (SampleAt(p) is Color lc)
             {
                 if (cpWin != null) cpWin.ShowPreview(lc);
