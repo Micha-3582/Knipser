@@ -13,7 +13,7 @@ Schlankes Screenshot-Programm für Windows (C#, WPF, .NET 8) – ohne Werbung, o
 ## Installation
 Voraussetzung: [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0).
 
-Aus dem neuesten [Release](../../releases/latest) `Knipser-Setup-X.Y.Z.exe` herunterladen und ausführen. Das Setup installiert Knipser pro Benutzer (ohne Administratorrechte), legt einen Startmenü-Eintrag an und richtet auf Wunsch den Autostart ein. Alternativ gibt es `Knipser.exe` als portable Einzeldatei.
+Aus dem neuesten [Release](../../releases/latest) `Knipser-Setup-X.Y.Z.exe` herunterladen und ausführen. Das Setup installiert Knipser pro Benutzer (ohne Administratorrechte), legt einen Startmenü-Eintrag an und richtet auf Wunsch den Autostart ein. Die lose `Knipser.exe` im Release ist nur für das automatische Update in Knipser gedacht und läuft auf einem neuen Rechner ohne .NET 8 Desktop Runtime nicht – zum Installieren immer das Setup nehmen. Das Setup lädt die Runtime bei Bedarf nach.
 
 Das Programm läuft im Tray. Standard: `PrintScreen` Bereich, `Strg+PrintScreen` Vollbild, `Alt+PrintScreen` Fenster, `Strg+Umschalt+PrintScreen` scrollende Aufnahme, `Strg+Umschalt+F10/F11/F12` Farbpipette/Lupe/Lineal.
 
