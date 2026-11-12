@@ -125,6 +125,119 @@ public partial class EditorWindow : Window
         if (Width < MinWidth) Width = MinWidth;
     }
 
+    // ---------- Formen-Galerie (Rahmen-Werkzeug) ----------
+    static readonly string[] FormNames = { "Rechteck", "Abgerundetes Rechteck", "Dreieck", "Raute", "Sechseck", "Stern", "Sprechblase" };
+    static readonly string[] FormIcons =
+    {
+        "M5,6 H19 V18 H5 Z",
+        "M8,6 H16 A3,3 0 0 1 19,9 V15 A3,3 0 0 1 16,18 H8 A3,3 0 0 1 5,15 V9 A3,3 0 0 1 8,6 Z",
+        "M12,5 L20,19 H4 Z",
+        "M12,4 L20,12 L12,20 L4,12 Z",
+        "M8,5 H16 L21,12 L16,19 H8 L3,12 Z",
+        "M12,3 L14.6,9.2 L21.3,9.7 L16.2,14 L17.8,20.5 L12,17 L6.2,20.5 L7.8,14 L2.7,9.7 L9.4,9.2 Z",
+        "M6,5 H18 Q20,5 20,7 V13 Q20,15 18,15 H11 L7,19 V15 H6 Q4,15 4,13 V7 Q4,5 6,5 Z",
+    };
+    // Umrisse im Einheitsquadrat 0..100 (werden beim Aufziehen auf die gewünschte Größe gestreckt)
+    static readonly string[] FormGeos =
+    {
+        "", "",
+        "M50,0 L100,100 L0,100 Z",
+        "M50,0 L100,50 L50,100 L0,50 Z",
+        "M25,0 L75,0 L100,50 L75,100 L25,100 L0,50 Z",
+        "M50,0 L61.2,34.5 L97.6,34.5 L68.2,55.9 L79.4,90.5 L50,69.1 L20.6,90.5 L31.8,55.9 L2.4,34.5 L38.8,34.5 Z",
+        "M10,0 H90 Q100,0 100,10 V70 Q100,80 90,80 H40 L22,100 L28,80 H10 Q0,80 0,70 V10 Q0,0 10,0 Z",
+    };
+
+    UIElement MakeFormShape()
+    {
+        int id = Math.Clamp(settings.RectShape, 0, FormNames.Length - 1);
+        if (id == 0) return new Rectangle { Stroke = Brush(), StrokeThickness = thick, Fill = Brushes.Transparent, RadiusX = 2, RadiusY = 2 };
+        if (id == 1) return new Rectangle { Stroke = Brush(), StrokeThickness = thick, Fill = Brushes.Transparent, RadiusX = 16, RadiusY = 16 };
+        return new Path
+        {
+            Data = Geometry.Parse(FormGeos[id]), Stretch = Stretch.Fill, Stroke = Brush(), StrokeThickness = thick, Fill = Brushes.Transparent,
+            StrokeLineJoin = PenLineJoin.Round, Tag = new ShapeKind { Id = id },
+        };
+    }
+
+    void HookGalleryMenu(RadioButton rb)
+    {
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        timer.Tick += (_, _) => { timer.Stop(); ShowGalleryMenu(rb); };
+        rb.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            var pos = e.GetPosition(rb);
+            if (pos.X > rb.ActualWidth - 22 && pos.Y < 38) { ShowGalleryMenu(rb); e.Handled = true; return; }
+            timer.Start();
+        };
+        rb.PreviewMouseLeftButtonUp += (_, _) => timer.Stop();
+        rb.MouseLeave += (_, _) => timer.Stop();
+        rb.MouseRightButtonUp += (_, e) => { ShowGalleryMenu(rb); e.Handled = true; };
+    }
+
+    void ShowGalleryMenu(RadioButton target)
+    {
+        var pop = new Popup { PlacementTarget = target, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true };
+        var panel = new StackPanel();
+        for (int i = 0; i < FormNames.Length; i++)
+        {
+            int id = i;
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock { Text = id == settings.RectShape ? "\u2713" : "", Foreground = Ink, Width = 16, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(Geo(FormIcons[id]));
+            row.Children.Add(new TextBlock { Text = FormNames[id], Foreground = Ink, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 10, 0), MinWidth = 150 });
+            var b = new Button { Content = row, Style = (Style)FindResource("RibbonBtn"), HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(6, 3, 6, 3) };
+            b.Click += (_, _) => { settings.RectShape = id; settings.Save(); target.IsChecked = true; pop.IsOpen = false; };
+            panel.Children.Add(b);
+        }
+        pop.Child = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(3), Child = panel,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5 },
+        };
+        pop.IsOpen = true;
+    }
+
+    // ---------- Bild als Element einfügen ----------
+    void PasteImageElement(BitmapSource? src)
+    {
+        if (src == null) return;
+        CommitText();
+        double w = src.PixelWidth, h = src.PixelHeight;
+        double k = Math.Min(1, Math.Min(bmp.PixelWidth * 0.7 / w, bmp.PixelHeight * 0.7 / h));
+        int iw = (int)Math.Max(8, Math.Round(w * k)), ih = (int)Math.Max(8, Math.Round(h * k));
+        var img = new Image { Source = src, Width = iw, Height = ih, Stretch = Stretch.Fill };
+        Canvas.SetLeft(img, (int)((bmp.PixelWidth - iw) / 2.0)); Canvas.SetTop(img, (int)((bmp.PixelHeight - ih) / 2.0));
+        Art.Children.Add(img);
+        Push(() => Art.Children.Remove(img), () => Art.Children.Add(img));
+        Select(img);
+        toolButtons[Tool.Pointer].IsChecked = true;
+    }
+
+    void PasteFromClipboard()
+    {
+        try
+        {
+            if (Clipboard.ContainsImage()) PasteImageElement(Clipboard.GetImage());
+            else Status.Text = "In der Zwischenablage liegt kein Bild.";
+        }
+        catch (Exception ex) { Status.Text = "Einfügen fehlgeschlagen: " + ex.Message; }
+    }
+
+    void InsertImageFile()
+    {
+        var dlg = new OpenFileDialog { Filter = "Bilder (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|Alle Dateien|*.*" };
+        if (dlg.ShowDialog(this) != true) return;
+        try
+        {
+            var bi = new BitmapImage();
+            bi.BeginInit(); bi.CacheOption = BitmapCacheOption.OnLoad; bi.UriSource = new Uri(dlg.FileName); bi.EndInit(); bi.Freeze();
+            PasteImageElement(bi);
+        }
+        catch (Exception ex) { Status.Text = "Bild konnte nicht geladen werden: " + ex.Message; }
+    }
+
     // ---------- Form-Untermenü für Verpixeln / Weichzeichnen ----------
     static readonly string[] ShapeNames = { "Rechteck", "Ellipse", "Freihand (Lasso)" };
 
@@ -618,6 +731,8 @@ public partial class EditorWindow : Window
             fmtBox));
         panels["Datei"].Children.Add(Group("Zwischenablage",
             BigBtn(Glyph("\uE8C8"), "Kopieren", (_, _) => CopyToClipboard()),
+            BigBtn(Glyph("\uE77F"), "Einfügen", (_, _) => PasteFromClipboard(), "Bild aus der Zwischenablage als verschiebbares Element einfügen (Strg+V)"),
+            BigBtn(Glyph("\uE8B9"), "Bilddatei", (_, _) => InsertImageFile(), "Bilddatei als verschiebbares Element einfügen"),
             BigBtn(Glyph("\uE749"), "Drucken", (_, _) => PrintImage())));
         panels["Datei"].Children.Add(Group("Programm",
             BigBtn(Glyph("\uE8A7"), "Öffnen mit", (_, _) => OpenExternal(), "Bild speichern und im externen Programm öffnen (Einstellungen → Speichern)"),
@@ -635,7 +750,7 @@ public partial class EditorWindow : Window
             ("Auswahl", Tool.Pointer, Geo("M6,3 L6,19 L10,15 L13,21 L15.5,20 L12.5,14 L18,14 Z", true)),
             ("Pfeil", Tool.Arrow, BuildArrowIcon()),
             ("Linie", Tool.Line, Geo("M4,20 L20,4")),
-            ("Rahmen", Tool.Rect, Geo("M4,6 H20 V18 H4 Z")),
+            ("Rahmen", Tool.Rect, WithCorner(Geo("M4,6 H20 V18 H4 Z"))),
             ("Ellipse", Tool.Ellipse, Geo("M3,12 A9,6 0 1 0 21,12 A9,6 0 1 0 3,12")),
             ("Stift", Tool.Pen, Geo("M3,17 C6,5 9,5 12,12 S18,19 21,7")),
             ("Marker", Tool.Marker, Glyph("\uE7E6")),
@@ -661,6 +776,7 @@ public partial class EditorWindow : Window
             };
             toolButtons[t] = rb;
             if (t == Tool.Arrow) HookArrowMenu(rb);
+            if (t == Tool.Rect) HookGalleryMenu(rb);
             if (t == Tool.Blur) HookShapeMenu(rb, () => settings.BlurShape, v => settings.BlurShape = v, () => settings.BlurEdge, v => settings.BlurEdge = v);
             if (t == Tool.Soften) HookShapeMenu(rb, () => settings.SoftenShape, v => settings.SoftenShape = v, () => settings.SoftenEdge, v => settings.SoftenEdge = v);
             (t == Tool.Crop ? bildGroup : toolGroup).Add(rb);
@@ -862,7 +978,7 @@ public partial class EditorWindow : Window
         switch (tool)
         {
             case Tool.Rect:
-                cur = new Rectangle { Stroke = Brush(), StrokeThickness = thick, Fill = Brushes.Transparent, RadiusX = 2, RadiusY = 2 };
+                cur = MakeFormShape();
                 break;
             case Tool.Ellipse:
                 cur = new Ellipse { Stroke = Brush(), StrokeThickness = thick, Fill = Brushes.Transparent };
@@ -931,7 +1047,7 @@ public partial class EditorWindow : Window
             case Polyline pl:
                 pl.Points.Add(p);
                 break;
-            case Path path:
+            case Path path when path.Tag is not ShapeKind:
                 if (sh) p = SnapAngle(p0, p);
                 path.Tag = new LineInfo { A = p0, B = p, Arrow = tool == Tool.Arrow, Style = settings.ArrowStyle };
                 path.Data = ArrowGeo(p0, p, tool == Tool.Arrow, path.StrokeThickness, settings.ArrowStyle);
@@ -1048,7 +1164,9 @@ public partial class EditorWindow : Window
     LineInfo? lineBefore;
     Rect textRect0; double textFs0;
 
-    static bool IsRectLike(UIElement e) => e is Rectangle || e is Ellipse || e is Image;
+    sealed class ShapeKind { public int Id; }
+
+    static bool IsRectLike(UIElement e) => e is Rectangle || e is Ellipse || e is Image || e is Path { Tag: ShapeKind };
 
     static Rect LocalRect(UIElement e)
     {
@@ -2143,6 +2261,7 @@ public partial class EditorWindow : Window
         else if (ctrl && e.Key == Key.Y) { Redo(); e.Handled = true; }
         else if (ctrl && e.Key == Key.S) { QuickSave(); e.Handled = true; }
         else if (ctrl && e.Key == Key.C) { CopyToClipboard(); e.Handled = true; }
+        else if (ctrl && e.Key == Key.V) { PasteFromClipboard(); e.Handled = true; }
         else if (ctrl && e.Key == Key.OemQuestion) { Reorder(2); e.Handled = true; }   // Strg+# (deutsche Tastatur)
         else if (ctrl && e.Key == Key.OemOpenBrackets) { Reorder(3); e.Handled = true; }   // Strg+ß
         else if (e.Key == Key.Delete && selected != null)
