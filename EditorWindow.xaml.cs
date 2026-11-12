@@ -259,6 +259,26 @@ public partial class EditorWindow : Window
     }
 
     // ---------- Pipette ----------
+    /// <summary>Pipetten-Symbol (Tropfer mit Gummikappe, Glasröhrchen und Tropfen), schräg gestellt.</summary>
+    static UIElement PipetteIcon()
+    {
+        var rot = new RotateTransform(40, 20, 20);
+        Path Make(string data, bool fill)
+        {
+            var g = Geometry.Parse(data).Clone();
+            g.Transform = rot;
+            return new Path
+            {
+                Data = g, Fill = fill ? Ink : null, Stroke = Ink, StrokeThickness = fill ? 0.6 : 2.4,
+                StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+            };
+        }
+        var grid = new Grid { Width = 40, Height = 40 };
+        grid.Children.Add(Make("M15.5,8 V6 A3.5,3.5 0 0 1 19,2.5 H21 A3.5,3.5 0 0 1 24.5,6 V8 Z M13.5,8 H26.5 V11 H13.5 Z M16,20 H24 V27 L20,32.5 L16,27 Z M20,34.5 C18.3,36.8 18.3,38.5 20,38.5 C21.7,38.5 21.7,36.8 20,34.5 Z", true));
+        grid.Children.Add(Make("M16,11 V27 L20,32.5 L24,27 V11", false));
+        return new Viewbox { Width = 24, Height = 24, Child = grid };
+    }
+
     bool picking;
     Border? customSwatch;
     Color? customColor;
@@ -555,7 +575,7 @@ public partial class EditorWindow : Window
         {
             Width = 28, Height = 28, Margin = new Thickness(0), CornerRadius = new CornerRadius(14), Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
             Cursor = Cursors.Hand, ToolTip = "Pipette: Farbe aus dem Bild aufnehmen (Esc = abbrechen)",
-            Child = new Viewbox { Width = 22, Height = 22, Child = Geo("M5,19 L4,22 L7,21 L18,10 L14,6 Z M14,6 L16.5,3.5 A2.1,2.1 0 0 1 20.5,7.5 L18,10") },
+            Child = PipetteIcon(),
         };
         pipBtn.MouseEnter += (_, _) => pipBtn.Background = new SolidColorBrush(Color.FromRgb(0x5A, 0x5A, 0x5A));
         pipBtn.MouseLeave += (_, _) => pipBtn.Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44));
