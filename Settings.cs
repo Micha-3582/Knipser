@@ -66,6 +66,13 @@ public class Settings
     /// <summary>Externes Programm zum Öffnen der Aufnahme (Editor: Datei → Öffnen mit), Parameter mit %f für den Dateipfad.</summary>
     public string ExternalProgram { get; set; } = "";
     public string ExternalArgs { get; set; } = "";
+    /// <summary>Füllwerkzeug: 0 = zusammenhängende Fläche füllen, 1 = Farbe im ganzen Bild ersetzen.</summary>
+    public int FillMode { get; set; } = 0;
+    public string WatermarkText { get; set; } = "Knipser";
+    public int WatermarkSize { get; set; } = 36;
+    public int WatermarkOpacity { get; set; } = 50;
+    public int WatermarkPos { get; set; } = 1;
+    public bool WatermarkDark { get; set; } = false;
     public bool OpenEditor { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
     /// <summary>Editor schließen speichert das Bild automatisch (wie bei PicPick).</summary>

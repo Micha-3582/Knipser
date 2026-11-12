@@ -13,7 +13,7 @@ using Path = System.Windows.Shapes.Path;
 
 namespace Knipser;
 
-enum Tool { Pointer, Rect, Ellipse, Line, Arrow, Pen, Marker, Text, Number, Blur, Soften, Crop }
+enum Tool { Pointer, Rect, Ellipse, Line, Arrow, Pen, Marker, Text, Number, Blur, Soften, Crop, Fill }
 
 public partial class EditorWindow : Window
 {
@@ -759,6 +759,7 @@ public partial class EditorWindow : Window
             ("Verpixeln", Tool.Blur, WithCorner(Geo("M4,4 h6 v6 h-6 z M14,4 h6 v6 h-6 z M9,9 h6 v6 h-6 z M4,14 h6 v6 h-6 z M14,14 h6 v6 h-6 z"))),
             ("Weichzeichnen", Tool.Soften, WithCorner(Geo("M12,3 C16,8 19,11 19,14.5 A7,7 0 0 1 5,14.5 C5,11 8,8 12,3 Z"))),
             ("Zuschneiden", Tool.Crop, Glyph("\uE7A8")),
+            ("Füllen", Tool.Fill, WithCorner(Geo("M5,12 L12,5 L18,11 L11,18 Z M18,13 C19.5,15 20,16 19,17 C18,18 17,17 17,16 C17,15 17.5,14 18,13 Z"))),
         };
         var toolGroup = new List<UIElement>();
         var bildGroup = new List<UIElement>();
@@ -777,9 +778,10 @@ public partial class EditorWindow : Window
             toolButtons[t] = rb;
             if (t == Tool.Arrow) HookArrowMenu(rb);
             if (t == Tool.Rect) HookGalleryMenu(rb);
+            if (t == Tool.Fill) HookListMenu(rb, FillNames, () => settings.FillMode, v => settings.FillMode = v);
             if (t == Tool.Blur) HookShapeMenu(rb, () => settings.BlurShape, v => settings.BlurShape = v, () => settings.BlurEdge, v => settings.BlurEdge = v);
             if (t == Tool.Soften) HookShapeMenu(rb, () => settings.SoftenShape, v => settings.SoftenShape = v, () => settings.SoftenEdge, v => settings.SoftenEdge = v);
-            (t == Tool.Crop ? bildGroup : toolGroup).Add(rb);
+            (t == Tool.Crop || t == Tool.Fill ? bildGroup : toolGroup).Add(rb);
         }
 
         panels["Start"].Children.Add(Group("Bild", bildGroup.ToArray()));
@@ -788,15 +790,20 @@ public partial class EditorWindow : Window
             BigBtn(Geo("M6,12 A7,7 0 1 1 12,19 M6,12 L3,9 M6,12 L9,9"), "Links", (_, _) => RotateImage(270), "90° nach links drehen"),
             BigBtn(Geo("M18,12 A7,7 0 1 0 12,19 M18,12 L21,9 M18,12 L15,9"), "Rechts", (_, _) => RotateImage(90), "90° nach rechts drehen"),
             BigBtn(Geo("M12,3 V21 M8,7 L3,12 L8,17 Z M16,7 L21,12 L16,17 Z"), "Spiegeln ↔", (_, _) => FlipImage(true), "Horizontal kippen"),
-            BigBtn(Geo("M3,12 H21 M7,8 L12,3 L17,8 Z M7,16 L12,21 L17,16 Z"), "Spiegeln ↕", (_, _) => FlipImage(false), "Vertikal kippen")));
+            BigBtn(Geo("M3,12 H21 M7,8 L12,3 L17,8 Z M7,16 L12,21 L17,16 Z"), "Spiegeln ↕", (_, _) => FlipImage(false), "Vertikal kippen"),
+            BigBtn(Geo("M8,8 H16 V16 H8 Z M3,3 H21 V21 H3 Z"), "Arbeitsbereich", (_, _) => ChangeCanvas(), "Arbeitsbereich (Leinwand) um einen Rand erweitern")));
         panels["Bild"].Children.Add(Group("Anpassen",
             BigBtn(Geo("M12,4 A8,8 0 1 0 12,20 A8,8 0 1 0 12,4 Z M12,4 V20 M12,4 A8,8 0 0 1 12,20 Z", true), "Hell/Kontrast", (_, _) => BrightnessContrast(), "Helligkeit und Kontrast"),
             BigBtn(Geo("M4,4 H20 V20 H4 Z M12,4 V20 M4,12 H12"), "Invertieren", (_, _) => ApplyPixelEffect(InvertFx), "Farben umkehren"),
-            BigBtn(Geo("M12,4 L20,20 H4 Z M12,10 V15"), "Schärfen", (_, _) => ApplyPixelEffect(SharpenFx), "Bild schärfen")));
+            BigBtn(Geo("M12,4 L20,20 H4 Z M12,10 V15"), "Schärfen", (_, _) => ApplyPixelEffect(SharpenFx), "Bild schärfen"),
+            BigBtn(Geo("M12,3 A9,9 0 1 0 12,21 A9,9 0 1 0 12,3 Z M12,3 V12 L19.8,16.5 M12,12 L4.2,16.5"), "Farbton", (_, _) => HueSaturation(), "Farbton, Sättigung und Helligkeit"),
+            BigBtn(Geo("M4,7 H20 M4,12 H20 M4,17 H20 M8,5 V9 M15,10 V14 M10,15 V19"), "Farbbalance", (_, _) => ColorBalance(), "Rot-, Grün- und Blauanteil verschieben")));
         panels["Bild"].Children.Add(Group("Effekte",
             BigBtn(Geo("M5,5 H19 V19 H5 Z M9,9 H15 V15 H9 Z"), "Rahmen", (_, _) => ApplyImageFrame(), "Rahmen um das ganze Bild (Breite und Farbe wählbar)"),
             BigBtn(Geo("M4,4 H15 V15 H4 Z M18,7 V18 H7"), "Schatten", (_, _) => ApplyImageShadow(), "Schlagschatten um das ganze Bild (Abstand, Weichheit und Deckkraft wählbar)"),
-            BigBtn(Geo("M12,4 A8,8 0 1 0 12,20 A8,8 0 1 0 12,4 Z M12,4 V20"), "Graustufen", (_, _) => ApplyGrayscale(), "Bild in Graustufen umwandeln")));
+            BigBtn(Geo("M12,4 A8,8 0 1 0 12,20 A8,8 0 1 0 12,4 Z M12,4 V20"), "Graustufen", (_, _) => ApplyGrayscale(), "Bild in Graustufen umwandeln"),
+            BigBtn(Geo("M4,4 h4 v4 h-4 z M12,4 h4 v4 h-4 z M8,8 h4 v4 h-4 z M16,8 h4 v4 h-4 z M4,12 h4 v4 h-4 z M12,12 h4 v4 h-4 z M8,16 h4 v4 h-4 z M16,16 h4 v4 h-4 z"), "Auflösen", (_, _) => PixelateWhole(), "Ganzes Bild in Pixel auflösen"),
+            BigBtn(Geo("M4,5 H20 V19 H4 Z M8,15 L12,8 L16,15 M9.5,12.5 H14.5"), "Wasserzeichen", (_, _) => Watermark(), "Text als Wasserzeichen in das Bild einrechnen")));
         panels["Bild"].Children.Add(Group("Element",
             BigBtn(Geo("M5,5 H15 V15 H5 Z M18,8 V18 H8"), "Schatten ein/aus", (_, _) => ToggleElementShadow(), "Schlagschatten für das ausgewählte Element ein- oder ausschalten")));
         panels["Start"].Children.Add(Group("Werkzeuge", toolGroup.ToArray()));
@@ -972,6 +979,7 @@ public partial class EditorWindow : Window
             return;
         }
         Select(null);
+        if (tool == Tool.Fill) { DoFill(p0); return; }
         if (tool == Tool.Text) { AddText(p0); return; }
         if (tool == Tool.Number) { AddNumber(p0); return; }
 
@@ -1949,6 +1957,243 @@ public partial class EditorWindow : Window
         doIt();
         Push(undo, doIt);
         UpdateSel();
+    }
+
+    // ---------- Weitere Bildeffekte ----------
+    void SlidersEffect(string title, (string label, int min, int max, int val, string unit)[] rows, Func<int[], Action<byte[], int, int>> makeFx)
+    {
+        CommitText();
+        Select(null);
+        var orig = bmp;
+        var dlg = new SlidersDialog(title, rows, v => QueuePreview(() => baseImg.Source = PixelEffect(orig, makeFx(v)))) { Owner = this };
+        bool ok = dlg.ShowDialog() == true;
+        prevTimer?.Stop();
+        baseImg.Source = orig;
+        if (!ok) return;
+        var vals = dlg.Values;
+        bool changed = false;
+        for (int i = 0; i < rows.Length; i++) if (vals[i] != rows[i].val) changed = true;
+        if (changed) ApplyPixelEffect(makeFx(vals));
+    }
+
+    void HueSaturation() => SlidersEffect("Farbton und Sättigung", new[] { ("Farbton", -180, 180, 0, "°"), ("Sättigung", -100, 100, 0, ""), ("Helligkeit", -100, 100, 0, "") },
+        v => (px, w, h) =>
+        {
+            double hs = v[0], sat = 1 + v[1] / 100.0, li = v[2] / 100.0;
+            for (int i = 0; i < px.Length; i += 4)
+            {
+                ColorPickerWindow.ToHsv(Color.FromRgb(px[i + 2], px[i + 1], px[i]), out double hh, out double ss, out double vv);
+                hh = ((hh + hs) % 360 + 360) % 360;
+                ss = Math.Clamp(ss * sat, 0, 1);
+                vv = li >= 0 ? vv + (1 - vv) * li : vv * (1 + li);
+                var c = ColorPickerWindow.FromHsv(hh, ss, Math.Clamp(vv, 0, 1));
+                px[i] = c.B; px[i + 1] = c.G; px[i + 2] = c.R;
+            }
+        });
+
+    void ColorBalance() => SlidersEffect("Farbbalance", new[] { ("Rot ↔ Cyan", -100, 100, 0, ""), ("Grün ↔ Magenta", -100, 100, 0, ""), ("Blau ↔ Gelb", -100, 100, 0, "") },
+        v => (px, w, h) =>
+        {
+            for (int i = 0; i < px.Length; i += 4)
+            {
+                px[i] = (byte)Math.Clamp(px[i] + v[2], 0, 255);
+                px[i + 1] = (byte)Math.Clamp(px[i + 1] + v[1], 0, 255);
+                px[i + 2] = (byte)Math.Clamp(px[i + 2] + v[0], 0, 255);
+            }
+        });
+
+    void PixelateWhole() => SlidersEffect("In Pixel auflösen", new[] { ("Blockgröße", 1, 80, 1, " px") },
+        v => (px, w, h) =>
+        {
+            int n = Math.Max(1, v[0]);
+            if (n <= 1) return;
+            for (int by = 0; by < h; by += n)
+                for (int bx = 0; bx < w; bx += n)
+                {
+                    int x1 = Math.Min(w, bx + n), y1 = Math.Min(h, by + n);
+                    long sb = 0, sg = 0, sr = 0, sa = 0; int cnt = 0;
+                    for (int y = by; y < y1; y++) for (int x = bx; x < x1; x++) { int i = (y * w + x) * 4; sb += px[i]; sg += px[i + 1]; sr += px[i + 2]; sa += px[i + 3]; cnt++; }
+                    byte ab = (byte)(sb / cnt), ag = (byte)(sg / cnt), ar = (byte)(sr / cnt), aa = (byte)(sa / cnt);
+                    for (int y = by; y < y1; y++) for (int x = bx; x < x1; x++) { int i = (y * w + x) * 4; px[i] = ab; px[i + 1] = ag; px[i + 2] = ar; px[i + 3] = aa; }
+                }
+        });
+
+    BitmapSource BuildWatermark(BitmapSource src, string text, int size, int opacity, int pos, bool dark)
+    {
+        int w = src.PixelWidth, h = src.PixelHeight;
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawImage(src, new Rect(0, 0, w, h));
+            if (!string.IsNullOrEmpty(text))
+            {
+                byte a = (byte)(Math.Clamp(opacity, 5, 100) * 255 / 100);
+                Brush fg = new SolidColorBrush(dark ? Color.FromArgb(a, 0, 0, 0) : Color.FromArgb(a, 255, 255, 255));
+                Brush sh = new SolidColorBrush(dark ? Color.FromArgb((byte)(a / 2), 255, 255, 255) : Color.FromArgb((byte)(a / 2), 0, 0, 0));
+                double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+                var face = new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
+                FormattedText Ft(Brush b) => new(text, System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, face, size, b, ppd);
+                var f = Ft(fg); var f2 = Ft(sh);
+                if (pos == 5)
+                {
+                    dc.PushTransform(new RotateTransform(-30, w / 2.0, h / 2.0));
+                    double sx = f.Width + size * 2, sy = f.Height + size * 2;
+                    for (double y = -h; y < h * 2; y += sy) for (double x = -w; x < w * 2; x += sx) { dc.DrawText(f2, new Point(x + 1, y + 1)); dc.DrawText(f, new Point(x, y)); }
+                    dc.Pop();
+                }
+                else
+                {
+                    double m = size * 0.6;
+                    double x = pos is 1 or 3 ? w - f.Width - m : pos is 2 or 4 ? m : (w - f.Width) / 2;
+                    double y = pos is 1 or 2 ? h - f.Height - m : pos is 3 or 4 ? m : (h - f.Height) / 2;
+                    dc.DrawText(f2, new Point(x + 1, y + 1)); dc.DrawText(f, new Point(x, y));
+                }
+            }
+        }
+        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv); rtb.Freeze();
+        return rtb;
+    }
+
+    void Watermark()
+    {
+        CommitText();
+        Select(null);
+        var orig = bmp;
+        var dlg = new WatermarkDialog(settings.WatermarkText, settings.WatermarkSize, settings.WatermarkOpacity, settings.WatermarkPos, settings.WatermarkDark,
+            (tx, sz, op, ps, dk) => QueuePreview(() => baseImg.Source = BuildWatermark(orig, tx, sz, op, ps, dk))) { Owner = this };
+        bool ok = dlg.ShowDialog() == true;
+        prevTimer?.Stop();
+        baseImg.Source = orig;
+        if (!ok || string.IsNullOrWhiteSpace(dlg.WmText)) return;
+        settings.WatermarkText = dlg.WmText; settings.WatermarkSize = dlg.WmSize; settings.WatermarkOpacity = dlg.WmOpacity; settings.WatermarkPos = dlg.WmPos; settings.WatermarkDark = dlg.WmDark;
+        settings.Save();
+        var nb = BuildWatermark(orig, dlg.WmText, dlg.WmSize, dlg.WmOpacity, dlg.WmPos, dlg.WmDark);
+        Action doIt = () => SetBitmap(nb);
+        Action undo = () => SetBitmap(orig);
+        doIt();
+        Push(undo, doIt);
+        RefreshSel();
+    }
+
+    // ---------- Arbeitsbereich ----------
+    void ChangeCanvas()
+    {
+        CommitText();
+        Select(null);
+        var dlg = new CanvasDialog(bmp.PixelWidth, bmp.PixelHeight) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        int l = dlg.Left0, t = dlg.Top0, r = dlg.Right0, b = dlg.Bottom0;
+        if (l + t + r + b == 0) return;
+        var old = bmp;
+        int iw = old.PixelWidth, ih = old.PixelHeight, W = iw + l + r, H = ih + t + b;
+        Color fillColor = dlg.Fill switch { 1 => Colors.Black, 3 => color, _ => Colors.White };
+        bool transparent = dlg.Fill == 2 && IsPng;
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            if (!transparent) dc.DrawRectangle(new SolidColorBrush(dlg.Fill == 2 ? Colors.White : fillColor), null, new Rect(0, 0, W, H));
+            dc.DrawImage(old, new Rect(l, t, iw, ih));
+        }
+        var nb = new RenderTargetBitmap(W, H, 96, 96, PixelFormats.Pbgra32);
+        nb.Render(dv); nb.Freeze();
+        Action doIt = () => { SetBitmap(nb); Shift(l, t); };
+        Action undo = () => { SetBitmap(old); Shift(-l, -t); };
+        doIt();
+        Push(undo, doIt);
+        RefreshSel();
+        FitZoom();
+    }
+
+    // ---------- Füllwerkzeug ----------
+    static readonly string[] FillNames = { "Fläche füllen", "Farbe im ganzen Bild ersetzen" };
+
+    void HookListMenu(RadioButton rb, string[] names, Func<int> get, Action<int> set)
+    {
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        timer.Tick += (_, _) => { timer.Stop(); ShowListMenu(rb, names, get, set); };
+        rb.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            var pos = e.GetPosition(rb);
+            if (pos.X > rb.ActualWidth - 22 && pos.Y < 38) { ShowListMenu(rb, names, get, set); e.Handled = true; return; }
+            timer.Start();
+        };
+        rb.PreviewMouseLeftButtonUp += (_, _) => timer.Stop();
+        rb.MouseLeave += (_, _) => timer.Stop();
+        rb.MouseRightButtonUp += (_, e) => { ShowListMenu(rb, names, get, set); e.Handled = true; };
+    }
+
+    void ShowListMenu(RadioButton target, string[] names, Func<int> get, Action<int> set)
+    {
+        var pop = new Popup { PlacementTarget = target, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true };
+        var panel = new StackPanel();
+        for (int i = 0; i < names.Length; i++)
+        {
+            int id = i;
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock { Text = id == get() ? "\u2713" : "", Foreground = Ink, Width = 16, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = names[id], Foreground = Ink, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0), MinWidth = 190 });
+            var b = new Button { Content = row, Style = (Style)FindResource("RibbonBtn"), HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(6, 3, 6, 3) };
+            b.Click += (_, _) => { set(id); settings.Save(); target.IsChecked = true; pop.IsOpen = false; };
+            panel.Children.Add(b);
+        }
+        pop.Child = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(3), Child = panel,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5 },
+        };
+        pop.IsOpen = true;
+    }
+
+    /// <summary>Füllt per Klick: Fläche (zusammenhängend) oder alle ähnlichen Farben im Bild. Die Stärke bestimmt die Toleranz.</summary>
+    void DoFill(Point p)
+    {
+        int x = (int)Math.Floor(p.X), y = (int)Math.Floor(p.Y);
+        var old = bmp;
+        int w = old.PixelWidth, h = old.PixelHeight;
+        if (x < 0 || y < 0 || x >= w || y >= h) return;
+        var conv = new FormatConvertedBitmap(old, PixelFormats.Bgra32, null, 0);
+        var px = new byte[w * h * 4];
+        conv.CopyPixels(px, w * 4, 0);
+        int tol = (int)(thick * 6);
+        int ti = (y * w + x) * 4;
+        byte tb = px[ti], tg = px[ti + 1], tr = px[ti + 2];
+        bool Match(int i) => Math.Abs(px[i] - tb) <= tol && Math.Abs(px[i + 1] - tg) <= tol && Math.Abs(px[i + 2] - tr) <= tol;
+        byte fb = color.B, fg = color.G, fr = color.R;
+        if (tb == fb && tg == fg && tr == fr) return;
+        void Set(int i) { px[i] = fb; px[i + 1] = fg; px[i + 2] = fr; px[i + 3] = 255; }
+        if (settings.FillMode == 1)
+        {
+            for (int i = 0; i < px.Length; i += 4) if (Match(i)) Set(i);
+        }
+        else
+        {
+            var seen = new bool[w * h];
+            var stack = new Stack<(int x, int y)>();
+            stack.Push((x, y));
+            while (stack.Count > 0)
+            {
+                var (cx, cy) = stack.Pop();
+                if (cx < 0 || cy < 0 || cx >= w || cy >= h || seen[cy * w + cx]) continue;
+                int idx = (cy * w + cx) * 4;
+                if (!Match(idx)) continue;
+                int lx = cx; while (lx > 0 && !seen[cy * w + lx - 1] && Match((cy * w + lx - 1) * 4)) lx--;
+                int rx = cx; while (rx < w - 1 && !seen[cy * w + rx + 1] && Match((cy * w + rx + 1) * 4)) rx++;
+                for (int xx = lx; xx <= rx; xx++)
+                {
+                    seen[cy * w + xx] = true; Set((cy * w + xx) * 4);
+                    if (cy > 0 && !seen[(cy - 1) * w + xx]) stack.Push((xx, cy - 1));
+                    if (cy < h - 1 && !seen[(cy + 1) * w + xx]) stack.Push((xx, cy + 1));
+                }
+            }
+        }
+        var nb = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, w * 4);
+        nb.Freeze();
+        Action doIt = () => SetBitmap(nb);
+        Action undo = () => SetBitmap(old);
+        doIt();
+        Push(undo, doIt);
     }
 
     // ---------- Externes Programm ----------

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -228,5 +229,102 @@ internal class ShadowDialog : DarkDialog
         }
         Row("Abstand", os, " px"); Row("Weichheit", bs, " px"); Row("Deckkraft", ps, " %"); Row("Eckenradius", rs, " px");
         Loaded += (_, _) => Fire();
+    }
+}
+
+/// <summary>Allgemeiner Dialog mit mehreren Schiebereglern und Live-Vorschau.</summary>
+internal class SlidersDialog : DarkDialog
+{
+    readonly Slider[] sliders;
+    public int[] Values => sliders.Select(s => (int)s.Value).ToArray();
+    readonly Action<int[]>? preview;
+
+    public SlidersDialog(string title, (string label, int min, int max, int val, string unit)[] rows, Action<int[]>? preview) : base(title)
+    {
+        this.preview = preview;
+        PlaceRight();
+        sliders = new Slider[rows.Length];
+        for (int i = 0; i < rows.Length; i++)
+        {
+            var r = rows[i];
+            var sl = new Slider { Minimum = r.min, Maximum = r.max, Value = Math.Clamp(r.val, r.min, r.max), Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
+            sliders[i] = sl;
+            var tx = new TextBlock { Width = 56, Text = $"{(int)sl.Value}{r.unit}", TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+            var unit = r.unit;
+            sl.ValueChanged += (_, _) => { tx.Text = $"{(int)sl.Value}{unit}"; Fire(); };
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(sl); row.Children.Add(tx);
+            Body.Children.Add(Line(r.label, row));
+        }
+        Loaded += (_, _) => Fire();
+    }
+
+    void Fire() => preview?.Invoke(Values);
+}
+
+/// <summary>Wasserzeichen: Text, Größe, Deckkraft, Position, hell/dunkel – mit Live-Vorschau.</summary>
+internal class WatermarkDialog : DarkDialog
+{
+    public string WmText => tx.Text;
+    public int WmSize => (int)size.Value;
+    public int WmOpacity => (int)op.Value;
+    public int WmPos => pos.SelectedIndex;
+    public bool WmDark => dark.IsChecked == true;
+    readonly TextBox tx = Field(240);
+    readonly Slider size = new() { Minimum = 10, Maximum = 200, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
+    readonly Slider op = new() { Minimum = 5, Maximum = 100, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
+    readonly ComboBox pos = new() { Width = 180 };
+    readonly CheckBox dark = new() { Content = "Dunkle Schrift (statt heller)", Margin = new Thickness(0, 6, 0, 2) };
+    readonly Action<string, int, int, int, bool>? preview;
+
+    void Fire() => preview?.Invoke(WmText, WmSize, WmOpacity, WmPos, WmDark);
+
+    public WatermarkDialog(string text, int sz, int opacity, int position, bool isDark, Action<string, int, int, int, bool>? preview) : base("Wasserzeichen")
+    {
+        this.preview = preview;
+        PlaceRight();
+        dark.Foreground = Foreground;
+        tx.Text = text; size.Value = Math.Clamp(sz, 10, 200); op.Value = Math.Clamp(opacity, 5, 100); dark.IsChecked = isDark;
+        foreach (var n in new[] { "Mitte", "Unten rechts", "Unten links", "Oben rechts", "Oben links", "Gekachelt (diagonal)" }) pos.Items.Add(n);
+        pos.SelectedIndex = Math.Clamp(position, 0, 5);
+        Body.Children.Add(Line("Text", tx));
+        var r1 = new StackPanel { Orientation = Orientation.Horizontal };
+        var t1 = new TextBlock { Width = 56, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+        r1.Children.Add(size); r1.Children.Add(t1);
+        Body.Children.Add(Line("Schriftgröße", r1));
+        var r2 = new StackPanel { Orientation = Orientation.Horizontal };
+        var t2 = new TextBlock { Width = 56, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+        r2.Children.Add(op); r2.Children.Add(t2);
+        Body.Children.Add(Line("Deckkraft", r2));
+        Body.Children.Add(Line("Position", pos));
+        Body.Children.Add(dark);
+        void Show() { t1.Text = $"{(int)size.Value} px"; t2.Text = $"{(int)op.Value} %"; }
+        Show();
+        tx.TextChanged += (_, _) => Fire();
+        size.ValueChanged += (_, _) => { Show(); Fire(); };
+        op.ValueChanged += (_, _) => { Show(); Fire(); };
+        pos.SelectionChanged += (_, _) => Fire();
+        dark.Click += (_, _) => Fire();
+        Loaded += (_, _) => Fire();
+    }
+}
+
+/// <summary>Arbeitsbereich (Leinwand) vergrößern: Rand je Seite in Pixeln und Füllung.</summary>
+internal class CanvasDialog : DarkDialog
+{
+    public int Left0 => P(l); public int Top0 => P(t); public int Right0 => P(r); public int Bottom0 => P(b);
+    public int Fill => fill.SelectedIndex;
+    readonly TextBox l = Field(70), t = Field(70), r = Field(70), b = Field(70);
+    readonly ComboBox fill = new() { Width = 180 };
+    static int P(TextBox x) => int.TryParse(x.Text, out int v) ? Math.Clamp(v, 0, 5000) : 0;
+
+    public CanvasDialog(int w, int h) : base("Arbeitsbereich ändern")
+    {
+        Body.Children.Add(new TextBlock { Text = $"Aktuell: {w} × {h} Pixel. Rand hinzufügen (Pixel):", Foreground = Brushes.Gray, Margin = new Thickness(0, 0, 0, 6) });
+        l.Text = t.Text = r.Text = b.Text = "50";
+        Body.Children.Add(Line("Links", l)); Body.Children.Add(Line("Oben", t)); Body.Children.Add(Line("Rechts", r)); Body.Children.Add(Line("Unten", b));
+        foreach (var n in new[] { "Weiß", "Schwarz", "Transparent (nur PNG)", "Aktuelle Farbe" }) fill.Items.Add(n);
+        fill.SelectedIndex = 0;
+        Body.Children.Add(Line("Füllung", fill));
     }
 }
