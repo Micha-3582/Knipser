@@ -157,7 +157,7 @@ public partial class EditorWindow : Window
         rb.MouseRightButtonUp += (_, e) => { ShowShapeMenu(rb, get, set, getEdge, setEdge); e.Handled = true; };
     }
 
-    static readonly string[] EdgeNames = { "Harte Kante", "Weiche Kante", "Sehr weiche Kante" };
+    static readonly string[] EdgeNames = { "Harte Kante", "Weiche Kante" };
 
     void ShowShapeMenu(RadioButton target, Func<int> get, Action<int> set, Func<int> getEdge, Action<int> setEdge)
     {
@@ -185,7 +185,7 @@ public partial class EditorWindow : Window
         {
             int ed = i;
             var row = new StackPanel { Orientation = Orientation.Horizontal };
-            row.Children.Add(new TextBlock { Text = ed == getEdge() ? "\u2713" : "", Foreground = Ink, Width = 16, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = ed == Math.Min(getEdge(), 1) ? "\u2713" : "", Foreground = Ink, Width = 16, VerticalAlignment = VerticalAlignment.Center });
             row.Children.Add(new TextBlock { Text = EdgeNames[ed], Foreground = Ink, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0), MinWidth = 130 });
             var b = new Button { Content = row, Style = (Style)FindResource("RibbonBtn"), HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(6, 3, 6, 3) };
             b.Click += (_, _) =>
@@ -207,7 +207,7 @@ public partial class EditorWindow : Window
 
     /// <summary>Weichheit der Kante in Pixeln (0 = hart), abhängig von der Größe der Form.</summary>
     static double FeatherPx(Rect shapeRect, int edge) =>
-        edge <= 0 ? 0 : Math.Clamp(Math.Min(shapeRect.Width, shapeRect.Height) * (edge == 1 ? 0.12 : 0.25), 3, edge == 1 ? 30 : 70);
+        edge <= 0 ? 0 : Math.Clamp(Math.Min(shapeRect.Width, shapeRect.Height) * 0.05, 3, 10);
 
     /// <summary>Form (Ellipse oder Freihand) als Deckkraftmaske auf das Bild-Element legen; skaliert beim Größe-Ändern mit.</summary>
     static void ApplyShapeMask(Image img, int shape, List<Point>? poly, Rect shapeRect, double feather)
@@ -245,12 +245,14 @@ public partial class EditorWindow : Window
 
         // weiche Kante: Form als Bild zeichnen, weichzeichnen, als Deckkraftmaske benutzen
         var dv = new DrawingVisual();
-        using (var dc = dv.RenderOpen()) dc.DrawGeometry(Brushes.Black, null, g);
+        // Form um die Weichheit nach außen verbreitern, dann weichzeichnen: innen bleibt der Effekt voll, nur außen läuft er aus
+        var grow = new Pen(Brushes.Black, feather * 2) { LineJoin = PenLineJoin.Round };
+        using (var dc = dv.RenderOpen()) dc.DrawGeometry(Brushes.Black, grow, g);
         var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
         rtb.Render(dv);
         var px = new byte[w * h * 4];
         rtb.CopyPixels(px, w * 4, 0);
-        BlurBgra(px, w, h, Math.Max(1, (int)Math.Round(feather)));
+        BlurBgra(px, w, h, Math.Max(1, (int)Math.Round(feather * 0.6)));
         var mask = BitmapSource.Create(w, h, 96, 96, PixelFormats.Pbgra32, null, px, w * 4);
         mask.Freeze();
         img.OpacityMask = new ImageBrush(mask) { Stretch = Stretch.Fill };
@@ -1231,7 +1233,7 @@ public partial class EditorWindow : Window
     {
         var shapeRect = r;
         double feather = FeatherPx(shapeRect, settings.BlurEdge);
-        if (feather > 0) r.Inflate(feather * 2, feather * 2);
+        if (feather > 0) r.Inflate(feather * 2.5, feather * 2.5);
         r.Intersect(new Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight));
         if (r.Width < 3 || r.Height < 3) return null;
         var crop = new CroppedBitmap(bmp, new Int32Rect((int)r.X, (int)r.Y, (int)r.Width, (int)r.Height));
@@ -1249,7 +1251,7 @@ public partial class EditorWindow : Window
     {
         var shapeRect = r;
         double feather = FeatherPx(shapeRect, settings.SoftenEdge);
-        if (feather > 0) r.Inflate(feather * 2, feather * 2);
+        if (feather > 0) r.Inflate(feather * 2.5, feather * 2.5);
         r.Intersect(new Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight));
         if (r.Width < 3 || r.Height < 3) return null;
         int w = (int)r.Width, h = (int)r.Height;
