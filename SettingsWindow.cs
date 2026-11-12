@@ -143,6 +143,7 @@ internal class SettingsWindow : Window
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
         var ok = new Button { Content = "Speichern", Padding = new Thickness(18, 6, 18, 6), IsDefault = true };
         var cancel = new Button { Content = "Abbrechen", Padding = new Thickness(18, 6, 18, 6), Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
+        cancel.Click += (_, _) => Close();
         buttons.Children.Add(ok); buttons.Children.Add(cancel);
         root.Children.Add(buttons);
         Content = root;
