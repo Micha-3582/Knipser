@@ -125,6 +125,94 @@ public partial class EditorWindow : Window
         if (Width < MinWidth) Width = MinWidth;
     }
 
+    // ---------- Form-Untermenü für Verpixeln / Weichzeichnen ----------
+    static readonly string[] ShapeNames = { "Rechteck", "Ellipse", "Freihand (Lasso)" };
+
+    static UIElement ShapeIcon(int i) => i == 0 ? Geo("M5,6 H19 V18 H5 Z")
+        : i == 1 ? Geo("M3,12 A9,6 0 1 0 21,12 A9,6 0 1 0 3,12")
+        : Geo("M5,16 C3,8 9,4 14,6 C19,8 21,13 16,17 C13,20 8,18 9,13");
+
+    static UIElement WithCorner(UIElement icon)
+    {
+        var g = new Grid { Width = 32, Height = 26, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1, 0, 1) };
+        g.Children.Add(icon);
+        g.Children.Add(new Path { Data = Geometry.Parse("M0,6 L6,6 L6,0 Z"), Fill = new SolidColorBrush(Color.FromRgb(0xAA, 0xAA, 0xAA)), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 1) });
+        return g;
+    }
+
+    int ShapeOf(Tool t) => t == Tool.Soften ? settings.SoftenShape : settings.BlurShape;
+
+    void HookShapeMenu(RadioButton rb, Func<int> get, Action<int> set)
+    {
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        timer.Tick += (_, _) => { timer.Stop(); ShowShapeMenu(rb, get, set); };
+        rb.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            var pos = e.GetPosition(rb);
+            if (pos.X > rb.ActualWidth - 22 && pos.Y < 38) { ShowShapeMenu(rb, get, set); e.Handled = true; return; }
+            timer.Start();
+        };
+        rb.PreviewMouseLeftButtonUp += (_, _) => timer.Stop();
+        rb.MouseLeave += (_, _) => timer.Stop();
+        rb.MouseRightButtonUp += (_, e) => { ShowShapeMenu(rb, get, set); e.Handled = true; };
+    }
+
+    void ShowShapeMenu(RadioButton target, Func<int> get, Action<int> set)
+    {
+        var pop = new Popup { PlacementTarget = target, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true };
+        var panel = new StackPanel();
+        for (int i = 0; i < ShapeNames.Length; i++)
+        {
+            int st = i;
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock { Text = st == get() ? "\u2713" : "", Foreground = Ink, Width = 16, VerticalAlignment = VerticalAlignment.Center });
+            var ic = ShapeIcon(st);
+            row.Children.Add(ic);
+            row.Children.Add(new TextBlock { Text = ShapeNames[i], Foreground = Ink, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 10, 0), MinWidth = 100 });
+            var b = new Button { Content = row, Style = (Style)FindResource("RibbonBtn"), HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(6, 3, 6, 3) };
+            b.Click += (_, _) =>
+            {
+                set(st); settings.Save();
+                target.IsChecked = true;
+                pop.IsOpen = false;
+            };
+            panel.Children.Add(b);
+        }
+        pop.Child = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(3), Child = panel,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.5 },
+        };
+        pop.IsOpen = true;
+    }
+
+    /// <summary>Form (Ellipse oder Freihand) als Deckkraftmaske auf das Bild-Element legen; skaliert beim Größe-Ändern mit.</summary>
+    static void ApplyShapeMask(Image img, int shape, List<Point>? poly)
+    {
+        if (shape == 0) return;
+        double w = img.Width, h = img.Height;
+        Geometry g;
+        if (shape == 1) g = new EllipseGeometry(new Rect(0, 0, w, h));
+        else
+        {
+            if (poly == null || poly.Count < 3) return;
+            double ox = Canvas.GetLeft(img), oy = Canvas.GetTop(img);
+            var sg = new StreamGeometry();
+            using (var c = sg.Open())
+            {
+                c.BeginFigure(new Point(poly[0].X - ox, poly[0].Y - oy), true, true);
+                for (int i = 1; i < poly.Count; i++) c.LineTo(new Point(poly[i].X - ox, poly[i].Y - oy), true, false);
+            }
+            sg.Freeze();
+            g = sg;
+        }
+        img.OpacityMask = new DrawingBrush(new GeometryDrawing(Brushes.Black, null, g))
+        {
+            Stretch = Stretch.Fill, ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, w, h),
+        };
+    }
+
     // ---------- Pfeil-Untermenü (Ecke am Symbol, langer Druck oder Rechtsklick) ----------
     Path? arrowPrev;
     static readonly string[] ArrowNames = { "Klassisch", "Spitz", "Offen", "Modern", "Punkt" };
@@ -273,8 +361,8 @@ public partial class EditorWindow : Window
             ("Marker", Tool.Marker, Glyph("\uE7E6")),
             ("Text", Tool.Text, Glyph("\uE8D2")),
             ("Nummer", Tool.Number, NumberIcon()),
-            ("Verpixeln", Tool.Blur, Geo("M4,4 h6 v6 h-6 z M14,4 h6 v6 h-6 z M9,9 h6 v6 h-6 z M4,14 h6 v6 h-6 z M14,14 h6 v6 h-6 z")),
-            ("Weichzeichnen", Tool.Soften, Geo("M12,3 C16,8 19,11 19,14.5 A7,7 0 0 1 5,14.5 C5,11 8,8 12,3 Z")),
+            ("Verpixeln", Tool.Blur, WithCorner(Geo("M4,4 h6 v6 h-6 z M14,4 h6 v6 h-6 z M9,9 h6 v6 h-6 z M4,14 h6 v6 h-6 z M14,14 h6 v6 h-6 z"))),
+            ("Weichzeichnen", Tool.Soften, WithCorner(Geo("M12,3 C16,8 19,11 19,14.5 A7,7 0 0 1 5,14.5 C5,11 8,8 12,3 Z"))),
             ("Zuschneiden", Tool.Crop, Glyph("\uE7A8")),
         };
         var toolGroup = new List<UIElement>();
@@ -293,6 +381,8 @@ public partial class EditorWindow : Window
             };
             toolButtons[t] = rb;
             if (t == Tool.Arrow) HookArrowMenu(rb);
+            if (t == Tool.Blur) HookShapeMenu(rb, () => settings.BlurShape, v => settings.BlurShape = v);
+            if (t == Tool.Soften) HookShapeMenu(rb, () => settings.SoftenShape, v => settings.SoftenShape = v);
             (t == Tool.Crop ? bildGroup : toolGroup).Add(rb);
         }
 
@@ -487,8 +577,20 @@ public partial class EditorWindow : Window
                 break;
             case Tool.Blur:
             case Tool.Soften:
-                cur = new Rectangle { Stroke = Brushes.White, StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 3, 3 }, Fill = new SolidColorBrush(Color.FromArgb(0x33, 255, 255, 255)) };
+            {
+                int shp = ShapeOf(tool);
+                var dash = new DoubleCollection { 3, 3 };
+                var tint = new SolidColorBrush(Color.FromArgb(0x33, 255, 255, 255));
+                if (shp == 2)
+                {
+                    var lasso = new Polyline { Stroke = Brushes.White, StrokeThickness = 1.5, StrokeDashArray = dash, Fill = tint, StrokeLineJoin = PenLineJoin.Round };
+                    lasso.Points.Add(p0);
+                    cur = lasso;
+                }
+                else if (shp == 1) cur = new Ellipse { Stroke = Brushes.White, StrokeThickness = 1, StrokeDashArray = dash, Fill = tint };
+                else cur = new Rectangle { Stroke = Brushes.White, StrokeThickness = 1, StrokeDashArray = dash, Fill = tint };
                 break;
+            }
             case Tool.Crop:
                 cur = new Rectangle { Stroke = Brushes.White, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 4, 3 }, Fill = new SolidColorBrush(Color.FromArgb(0x33, 30, 136, 229)) };
                 break;
@@ -580,11 +682,26 @@ public partial class EditorWindow : Window
             ApplyCrop(new Rect(Canvas.GetLeft(cs), Canvas.GetTop(cs), cs.Width, cs.Height));
             return;
         }
+        if ((tool == Tool.Blur || tool == Tool.Soften) && added is Polyline lassoLine)
+        {
+            Art.Children.Remove(added);
+            var poly = new List<Point>(lassoLine.Points);
+            double minX = double.MaxValue, minY = double.MaxValue, maxX = 0, maxY = 0;
+            foreach (var q in poly) { minX = Math.Min(minX, q.X); minY = Math.Min(minY, q.Y); maxX = Math.Max(maxX, q.X); maxY = Math.Max(maxY, q.Y); }
+            var box = new Rect(new Point(minX, minY), new Point(maxX, maxY));
+            var lpx = tool == Tool.Soften ? MakeSoften(box, 2, poly) : MakePixelate(box, 2, poly);
+            if (lpx == null) return;
+            Art.Children.Add(lpx);
+            Push(() => Art.Children.Remove(lpx), () => Art.Children.Add(lpx));
+            Select(lpx);
+            toolButtons[Tool.Pointer].IsChecked = true;
+            return;
+        }
         if ((tool == Tool.Blur || tool == Tool.Soften) && added is Shape bs)
         {
             Art.Children.Remove(added);
             var area = new Rect(Canvas.GetLeft(bs), Canvas.GetTop(bs), bs.Width, bs.Height);
-            var px = tool == Tool.Soften ? MakeSoften(area) : MakePixelate(area);
+            var px = tool == Tool.Soften ? MakeSoften(area, ShapeOf(tool), null) : MakePixelate(area, ShapeOf(tool), null);
             if (px == null) return;
             Art.Children.Add(px);
             Push(() => Art.Children.Remove(px), () => Art.Children.Add(px));
@@ -1067,7 +1184,7 @@ public partial class EditorWindow : Window
     }
 
     // ---------- Verpixeln & Zuschneiden ----------
-    UIElement? MakePixelate(Rect r)
+    UIElement? MakePixelate(Rect r, int shape = 0, List<Point>? poly = null)
     {
         r.Intersect(new Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight));
         if (r.Width < 3 || r.Height < 3) return null;
@@ -1077,11 +1194,12 @@ public partial class EditorWindow : Window
         var img = new Image { Source = small, Width = (int)r.Width, Height = (int)r.Height, Stretch = Stretch.Fill };
         RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.NearestNeighbor);
         Canvas.SetLeft(img, (int)r.X); Canvas.SetTop(img, (int)r.Y);
+        ApplyShapeMask(img, shape, poly);
         return img;
     }
 
     /// <summary>Weichgezeichneter Bereich (Gaußähnlich: dreifacher Boxfilter), Stärke über den Regler.</summary>
-    UIElement? MakeSoften(Rect r)
+    UIElement? MakeSoften(Rect r, int shape = 0, List<Point>? poly = null)
     {
         r.Intersect(new Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight));
         if (r.Width < 3 || r.Height < 3) return null;
@@ -1096,6 +1214,7 @@ public partial class EditorWindow : Window
         res.Freeze();
         var img = new Image { Source = res, Width = w, Height = h, Stretch = Stretch.Fill };
         Canvas.SetLeft(img, (int)r.X); Canvas.SetTop(img, (int)r.Y);
+        ApplyShapeMask(img, shape, poly);
         return img;
     }
 
