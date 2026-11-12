@@ -223,7 +223,7 @@ public partial class EditorWindow : Window
         body.Child = host;
         Ribbon.Children.Add(body);
 
-        foreach (var name in new[] { "Datei", "Start", "Ansicht" })
+        foreach (var name in new[] { "Datei", "Start", "Bild", "Ansicht" })
         {
             var panel = new StackPanel { Orientation = Orientation.Horizontal, Visibility = Visibility.Collapsed };
             panels[name] = panel;
@@ -295,8 +295,11 @@ public partial class EditorWindow : Window
             (t == Tool.Crop ? bildGroup : toolGroup).Add(rb);
         }
 
-        bildGroup.Add(BigBtn(Geo("M4,4 H15 V15 H4 Z M18,7 V18 H7"), "Schatten", (_, _) => ApplyImageShadow(), "Schlagschatten um das ganze Bild (Rand mit weichem Schatten)"));
         panels["Start"].Children.Add(Group("Bild", bildGroup.ToArray()));
+        panels["Bild"].Children.Add(Group("Effekte",
+            BigBtn(Geo("M5,5 H19 V19 H5 Z M9,9 H15 V15 H9 Z"), "Rahmen", (_, _) => ApplyImageFrame(), "Rahmen um das ganze Bild (Farbe und Breite wie gewählt)"),
+            BigBtn(Geo("M4,4 H15 V15 H4 Z M18,7 V18 H7"), "Schatten", (_, _) => ApplyImageShadow(), "Schlagschatten um das ganze Bild (Rand mit weichem Schatten)"),
+            BigBtn(Geo("M12,4 A8,8 0 1 0 12,20 A8,8 0 1 0 12,4 Z M12,4 V20"), "Graustufen", (_, _) => ApplyGrayscale(), "Bild in Graustufen umwandeln")));
         panels["Start"].Children.Add(Group("Werkzeuge", toolGroup.ToArray()));
 
         panels["Start"].Children.Add(Group("Anordnen",
@@ -1156,6 +1159,58 @@ public partial class EditorWindow : Window
         Push(undo, doIt);
         RefreshSel();
         FitZoom();
+    }
+
+    /// <summary>Rahmen um das ganze Bild in der gewählten Farbe; Breite = Stärke-Regler (mindestens 2 px).</summary>
+    void ApplyImageFrame()
+    {
+        CommitText();
+        Select(null);
+        var old = bmp;
+        int b = (int)Math.Max(2, Math.Round(thick));
+        int iw = old.PixelWidth, ih = old.PixelHeight, W = iw + 2 * b, H = ih + 2 * b;
+        var img = new FormatConvertedBitmap(old, PixelFormats.Bgra32, null, 0);
+        var ip = new byte[iw * ih * 4];
+        img.CopyPixels(ip, iw * 4, 0);
+        var outp = new byte[W * H * 4];
+        for (int i = 0; i < W * H; i++)
+        {
+            outp[i * 4] = color.B; outp[i * 4 + 1] = color.G; outp[i * 4 + 2] = color.R; outp[i * 4 + 3] = 255;
+        }
+        for (int y = 0; y < ih; y++)
+            Buffer.BlockCopy(ip, y * iw * 4, outp, ((y + b) * W + b) * 4, iw * 4);
+        var nb = BitmapSource.Create(W, H, 96, 96, PixelFormats.Bgra32, null, outp, W * 4);
+        nb.Freeze();
+        Action doIt = () => { SetBitmap(nb); Shift(b, b); };
+        Action undo = () => { SetBitmap(old); Shift(-b, -b); };
+        doIt();
+        Push(undo, doIt);
+        RefreshSel();
+        FitZoom();
+    }
+
+    /// <summary>Bild in Graustufen umwandeln (Markierungen darüber behalten ihre Farbe).</summary>
+    void ApplyGrayscale()
+    {
+        CommitText();
+        Select(null);
+        var old = bmp;
+        int w = old.PixelWidth, h = old.PixelHeight;
+        var conv = new FormatConvertedBitmap(old, PixelFormats.Bgra32, null, 0);
+        var px = new byte[w * h * 4];
+        conv.CopyPixels(px, w * 4, 0);
+        for (int i = 0; i < px.Length; i += 4)
+        {
+            byte g = (byte)Math.Clamp(0.114 * px[i] + 0.587 * px[i + 1] + 0.299 * px[i + 2] + 0.5, 0, 255);
+            px[i] = px[i + 1] = px[i + 2] = g;
+        }
+        var nb = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, w * 4);
+        nb.Freeze();
+        Action doIt = () => SetBitmap(nb);
+        Action undo = () => SetBitmap(old);
+        doIt();
+        Push(undo, doIt);
+        RefreshSel();
     }
 
     void ApplyCrop(Rect r)
