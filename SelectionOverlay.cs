@@ -54,6 +54,7 @@ internal class SelectionOverlay : Window
         ContentRendered += (_, _) => { Place(); Native.SetForegroundWindow(new WindowInteropHelper(this).Handle); };
         MouseLeftButtonDown += OnDown;
         MouseMove += OnMove;
+        MouseWheel += OnWheel;
         MouseLeftButtonUp += OnUp;
         MouseRightButtonDown += (_, _) => Close();
         KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
@@ -81,8 +82,62 @@ internal class SelectionOverlay : Window
         CaptureMouse();
     }
 
+    // Lupe am Mauszeiger (pixelgenaues Ansetzen)
+    static readonly int[] Zooms = { 4, 6, 8, 10, 12, 16, 20 };
+    int zoomIdx = 2;
+    const double LoupeSize = 150;
+    readonly Rectangle loupe = new() { Stroke = Brushes.White, StrokeThickness = 2, IsHitTestVisible = false, Visibility = Visibility.Collapsed, Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 0, Opacity = 0.8 } };
+    readonly Rectangle centerBox = new() { Stroke = Brushes.Red, StrokeThickness = 1.5, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    readonly Border loupeInfo = new() { Background = new SolidColorBrush(Color.FromArgb(0xDD, 0x20, 0x20, 0x20)), CornerRadius = new CornerRadius(3), Padding = new Thickness(6, 2, 6, 2), IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    readonly TextBlock loupeText = new() { Foreground = Brushes.White, FontSize = 12 };
+    bool loupeInit;
+    Point lastPos;
+
+    void UpdateLoupe(Point p)
+    {
+        if (!loupeInit)
+        {
+            loupeInfo.Child = loupeText;
+            cv.Children.Add(loupe); cv.Children.Add(centerBox); cv.Children.Add(loupeInfo);
+            loupe.Width = loupe.Height = LoupeSize;
+            loupeInit = true;
+        }
+        lastPos = p;
+        double kx = shot.PixelWidth / cv.ActualWidth, ky = shot.PixelHeight / cv.ActualHeight;
+        int px = Math.Clamp((int)Math.Floor(p.X * kx), 0, shot.PixelWidth - 1);
+        int py = Math.Clamp((int)Math.Floor(p.Y * ky), 0, shot.PixelHeight - 1);
+        int zoom = Zooms[zoomIdx];
+        int n = (int)(LoupeSize / zoom) | 1;
+        loupe.Fill = new ImageBrush(shot)
+        {
+            ViewboxUnits = BrushMappingMode.Absolute,
+            Viewbox = new Rect(px + 0.5 - n / 2.0, py + 0.5 - n / 2.0, n, n),
+            Stretch = Stretch.Fill,
+        };
+        RenderOptions.SetBitmapScalingMode(loupe, BitmapScalingMode.NearestNeighbor);
+
+        double ih = 24;
+        double lx = p.X + 24, ly = p.Y + 24;
+        if (lx + LoupeSize > cv.ActualWidth) lx = p.X - 24 - LoupeSize;
+        if (ly + LoupeSize + ih + 6 > cv.ActualHeight) ly = p.Y - 24 - LoupeSize - ih - 6;
+        Canvas.SetLeft(loupe, lx); Canvas.SetTop(loupe, ly);
+        double cell = LoupeSize / n;
+        centerBox.Width = centerBox.Height = cell;
+        Canvas.SetLeft(centerBox, lx + (LoupeSize - cell) / 2); Canvas.SetTop(centerBox, ly + (LoupeSize - cell) / 2);
+        loupeText.Text = $"x {px}  y {py}   ·   {zoom}×";
+        Canvas.SetLeft(loupeInfo, lx); Canvas.SetTop(loupeInfo, ly + LoupeSize + 6);
+        loupe.Visibility = centerBox.Visibility = loupeInfo.Visibility = Visibility.Visible;
+    }
+
+    void OnWheel(object s, MouseWheelEventArgs e)
+    {
+        zoomIdx = Math.Clamp(zoomIdx + (e.Delta > 0 ? 1 : -1), 0, Zooms.Length - 1);
+        UpdateLoupe(lastPos);
+    }
+
     void OnMove(object s, MouseEventArgs e)
     {
+        UpdateLoupe(e.GetPosition(cv));
         if (!start.HasValue) return;
         var p = e.GetPosition(cv);
         sel = new Rect(start.Value, p);
