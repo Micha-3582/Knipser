@@ -52,7 +52,7 @@ public partial class App : Application
         Register(4, Settings.HotkeyScroll, CaptureScroll, failed);
         Register(5, Settings.HotkeyPicker, () => PixelTool(PixelMode.Picker), failed);
         Register(6, Settings.HotkeyMagnifier, () => PixelTool(PixelMode.Magnifier), failed);
-        Register(7, Settings.HotkeyRuler, ToggleRuler, failed);
+        Register(7, Settings.HotkeyRuler, () => PixelTool(PixelMode.Ruler), failed);
         return failed;
     }
 
@@ -155,7 +155,7 @@ public partial class App : Application
         menu.Items.Add("Scrollende Aufnahme", null, (_, _) => CaptureScroll());
         menu.Items.Add("Farbpipette", null, (_, _) => PixelTool(PixelMode.Picker));
         menu.Items.Add("Lupe", null, (_, _) => PixelTool(PixelMode.Magnifier));
-        menu.Items.Add("Lineal", null, (_, _) => ToggleRuler());
+        menu.Items.Add("Messen (Lineal)", null, (_, _) => PixelTool(PixelMode.Ruler));
         menu.Items.Add("Bild aus Zwischenablage öffnen", null, (_, _) => OpenClipboard());
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Einstellungen…", null, (_, _) => ShowSettings());
@@ -257,17 +257,6 @@ public partial class App : Application
             }
         }
         finally { busy = false; }
-    }
-
-    RulerWindow? ruler;
-
-    void ToggleRuler()
-    {
-        if (ruler != null) { ruler.Close(); return; }
-        ruler = new RulerWindow();
-        ruler.Closed += (_, _) => ruler = null;
-        ruler.Show();
-        ruler.Activate();
     }
 
     async void CaptureScroll()

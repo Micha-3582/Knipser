@@ -87,7 +87,7 @@ internal class SettingsWindow : Window
         root.Children.Add(Row("Scrollende Aufnahme", scroll));
         root.Children.Add(Row("Farbpipette", picker));
         root.Children.Add(Row("Lupe", magnifier));
-        root.Children.Add(Row("Lineal ein/aus", rulerKey));
+        root.Children.Add(Row("Messen (Lineal)", rulerKey));
 
         root.Children.Add(Head("Speichern"));
         var fr = new DockPanel { Margin = new Thickness(0, 2, 0, 6) };
