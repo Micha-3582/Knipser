@@ -384,7 +384,7 @@ public partial class EditorWindow : Window
                 break;
             case Tool.Line:
             case Tool.Arrow:
-                cur = new Path { Stroke = Brush(), StrokeThickness = thick, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, Fill = tool == Tool.Arrow ? Brush() : null };
+                cur = new Path { Stroke = Brush(), StrokeThickness = thick, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, Fill = tool == Tool.Arrow && settings.ArrowStyle != 2 ? Brush() : null };
                 break;
             case Tool.Pen:
                 var pl = new Polyline { Stroke = Brush(), StrokeThickness = thick, StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
@@ -419,8 +419,8 @@ public partial class EditorWindow : Window
                 break;
             case Path path:
                 if (sh) p = SnapAngle(p0, p);
-                path.Tag = new LineInfo { A = p0, B = p, Arrow = tool == Tool.Arrow };
-                path.Data = ArrowGeo(p0, p, tool == Tool.Arrow, path.StrokeThickness);
+                path.Tag = new LineInfo { A = p0, B = p, Arrow = tool == Tool.Arrow, Style = settings.ArrowStyle };
+                path.Data = ArrowGeo(p0, p, tool == Tool.Arrow, path.StrokeThickness, settings.ArrowStyle);
                 break;
             case Shape s:
                 if (sh && tool != Tool.Crop)
@@ -509,7 +509,7 @@ public partial class EditorWindow : Window
     }
 
     // ---------- Auswahl & Anfasser ----------
-    sealed class LineInfo { public Point A, B; public bool Arrow; }
+    sealed class LineInfo { public Point A, B; public bool Arrow; public int Style; }
 
     Rectangle? selBox;
     readonly List<Rectangle> handles = new();
@@ -586,7 +586,7 @@ public partial class EditorWindow : Window
         switch (el)
         {
             case Path p when p.Tag is LineInfo li:
-                p.StrokeThickness = v; p.Data = ArrowGeo(li.A, li.B, li.Arrow, v); return true;
+                p.StrokeThickness = v; p.Data = ArrowGeo(li.A, li.B, li.Arrow, v, li.Style); return true;
             case Shape s when s.Stroke != null && (s.StrokeDashArray == null || s.StrokeDashArray.Count == 0) && s is Rectangle or Ellipse or Polyline or Path:
                 s.StrokeThickness = v; return true;
             case TextBlock tb:
@@ -658,7 +658,7 @@ public partial class EditorWindow : Window
             activeHandle = idx;
             if (IsRectLike(selected)) rectBefore = LocalRect(selected);
             else if (selected is TextBlock stb) { textRect0 = new Rect(Canvas.GetLeft(stb), Canvas.GetTop(stb), stb.ActualWidth, stb.ActualHeight); textFs0 = stb.FontSize; }
-            else if (selected is Path { Tag: LineInfo li }) lineBefore = new LineInfo { A = li.A, B = li.B, Arrow = li.Arrow };
+            else if (selected is Path { Tag: LineInfo li }) lineBefore = new LineInfo { A = li.A, B = li.B, Arrow = li.Arrow, Style = li.Style };
             h.CaptureMouse();
             e.Handled = true;
         };
@@ -731,7 +731,7 @@ public partial class EditorWindow : Window
         else if (selected is Path path && path.Tag is LineInfo li)
         {
             if (i == 0) li.A = lp; else li.B = lp;
-            path.Data = ArrowGeo(li.A, li.B, li.Arrow, path.StrokeThickness);
+            path.Data = ArrowGeo(li.A, li.B, li.Arrow, path.StrokeThickness, li.Style);
             PositionSel();
         }
     }
@@ -746,8 +746,8 @@ public partial class EditorWindow : Window
 
     void SetLine(Path path, LineInfo info)
     {
-        path.Tag = new LineInfo { A = info.A, B = info.B, Arrow = info.Arrow };
-        path.Data = ArrowGeo(info.A, info.B, info.Arrow, path.StrokeThickness);
+        path.Tag = new LineInfo { A = info.A, B = info.B, Arrow = info.Arrow, Style = info.Style };
+        path.Data = ArrowGeo(info.A, info.B, info.Arrow, path.StrokeThickness, info.Style);
         PositionSel();
     }
 
@@ -770,7 +770,7 @@ public partial class EditorWindow : Window
         else if (el is Path path && path.Tag is LineInfo li && lineBefore != null)
         {
             var b = lineBefore;
-            var a = new LineInfo { A = li.A, B = li.B, Arrow = li.Arrow };
+            var a = new LineInfo { A = li.A, B = li.B, Arrow = li.Arrow, Style = li.Style };
             Push(() => SetLine(path, b), () => SetLine(path, a));
         }
     }
@@ -784,7 +784,8 @@ public partial class EditorWindow : Window
         return new Point(a.X + Math.Cos(ang) * len, a.Y + Math.Sin(ang) * len);
     }
 
-    static Geometry ArrowGeo(Point a, Point b, bool head, double thick)
+    /// <summary>Linie, bei Pfeilen mit Spitze. style: 0 Klassisch, 1 Spitz, 2 Offen, 3 Modern, 4 Punkt.</summary>
+    internal static Geometry ArrowGeo(Point a, Point b, bool head, double thick, int style = 0)
     {
         var g = new StreamGeometry();
         using (var c = g.Open())
@@ -795,14 +796,42 @@ public partial class EditorWindow : Window
             if (head && v.Length > 1)
             {
                 v.Normalize();
-                double len = 12 + thick * 3, ang = 28 * Math.PI / 180;
-                var m1 = Matrix.Identity; m1.Rotate(ang * 180 / Math.PI);
-                var m2 = Matrix.Identity; m2.Rotate(-ang * 180 / Math.PI);
-                var p1 = b + m1.Transform(v) * len;
-                var p2 = b + m2.Transform(v) * len;
-                c.BeginFigure(b, true, true);
-                c.LineTo(p1, true, true);
-                c.LineTo(p2, true, true);
+                if (style == 4)
+                {
+                    double r = 3 + thick * 1.6;
+                    c.BeginFigure(new Point(b.X + r, b.Y), true, true);
+                    c.ArcTo(new Point(b.X - r, b.Y), new Size(r, r), 0, false, SweepDirection.Clockwise, true, true);
+                    c.ArcTo(new Point(b.X + r, b.Y), new Size(r, r), 0, false, SweepDirection.Clockwise, true, true);
+                }
+                else
+                {
+                    double half = style switch { 1 => 17, 3 => 26, _ => 28 };
+                    double len = style switch { 1 => 18 + thick * 4, 2 => 12 + thick * 3.5, 3 => 14 + thick * 3.5, _ => 12 + thick * 3 };
+                    var m1 = Matrix.Identity; m1.Rotate(half);
+                    var m2 = Matrix.Identity; m2.Rotate(-half);
+                    var p1 = b + m1.Transform(v) * len;
+                    var p2 = b + m2.Transform(v) * len;
+                    if (style == 2)
+                    {
+                        c.BeginFigure(p1, false, false);
+                        c.LineTo(b, true, true);
+                        c.LineTo(p2, true, true);
+                    }
+                    else if (style == 3)
+                    {
+                        var notch = b + v * (len * 0.68);
+                        c.BeginFigure(b, true, true);
+                        c.LineTo(p1, true, true);
+                        c.LineTo(notch, true, true);
+                        c.LineTo(p2, true, true);
+                    }
+                    else
+                    {
+                        c.BeginFigure(b, true, true);
+                        c.LineTo(p1, true, true);
+                        c.LineTo(p2, true, true);
+                    }
+                }
             }
         }
         g.Freeze();

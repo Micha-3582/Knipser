@@ -18,6 +18,8 @@ public class Settings
     public int CaptureDelay { get; set; } = 0;
     /// <summary>Mauszeiger im Bild mitfotografieren.</summary>
     public bool IncludeCursor { get; set; } = false;
+    /// <summary>Pfeilspitze im Editor: 0 Klassisch, 1 Spitz, 2 Offen, 3 Modern, 4 Punkt.</summary>
+    public int ArrowStyle { get; set; } = 0;
     public bool OpenEditor { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
     /// <summary>Editor schließen speichert das Bild automatisch (wie bei PicPick).</summary>
