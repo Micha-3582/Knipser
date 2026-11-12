@@ -13,7 +13,7 @@ using Path = System.Windows.Shapes.Path;
 
 namespace Knipser;
 
-enum Tool { Pointer, Rect, Ellipse, Line, Arrow, Pen, Marker, Text, Number, Blur, Crop }
+enum Tool { Pointer, Rect, Ellipse, Line, Arrow, Pen, Marker, Text, Number, Blur, Soften, Crop }
 
 public partial class EditorWindow : Window
 {
@@ -273,6 +273,7 @@ public partial class EditorWindow : Window
             ("Text", Tool.Text, Glyph("\uE8D2")),
             ("Nummer", Tool.Number, NumberIcon()),
             ("Verpixeln", Tool.Blur, Geo("M4,4 h6 v6 h-6 z M14,4 h6 v6 h-6 z M9,9 h6 v6 h-6 z M4,14 h6 v6 h-6 z M14,14 h6 v6 h-6 z")),
+            ("Weichzeichnen", Tool.Soften, Geo("M12,3 C16,8 19,11 19,14.5 A7,7 0 0 1 5,14.5 C5,11 8,8 12,3 Z")),
             ("Zuschneiden", Tool.Crop, Glyph("\uE7A8")),
         };
         var toolGroup = new List<UIElement>();
@@ -294,6 +295,7 @@ public partial class EditorWindow : Window
             (t == Tool.Crop ? bildGroup : toolGroup).Add(rb);
         }
 
+        bildGroup.Add(BigBtn(Geo("M4,4 H15 V15 H4 Z M18,7 V18 H7"), "Schatten", (_, _) => ApplyImageShadow(), "Schlagschatten um das ganze Bild (Rand mit weichem Schatten)"));
         panels["Start"].Children.Add(Group("Bild", bildGroup.ToArray()));
         panels["Start"].Children.Add(Group("Werkzeuge", toolGroup.ToArray()));
 
@@ -468,6 +470,7 @@ public partial class EditorWindow : Window
                 cur = new Rectangle { Fill = Brush(0x70) };
                 break;
             case Tool.Blur:
+            case Tool.Soften:
                 cur = new Rectangle { Stroke = Brushes.White, StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 3, 3 }, Fill = new SolidColorBrush(Color.FromArgb(0x33, 255, 255, 255)) };
                 break;
             case Tool.Crop:
@@ -561,10 +564,11 @@ public partial class EditorWindow : Window
             ApplyCrop(new Rect(Canvas.GetLeft(cs), Canvas.GetTop(cs), cs.Width, cs.Height));
             return;
         }
-        if (tool == Tool.Blur && added is Shape bs)
+        if ((tool == Tool.Blur || tool == Tool.Soften) && added is Shape bs)
         {
             Art.Children.Remove(added);
-            var px = MakePixelate(new Rect(Canvas.GetLeft(bs), Canvas.GetTop(bs), bs.Width, bs.Height));
+            var area = new Rect(Canvas.GetLeft(bs), Canvas.GetTop(bs), bs.Width, bs.Height);
+            var px = tool == Tool.Soften ? MakeSoften(area) : MakePixelate(area);
             if (px == null) return;
             Art.Children.Add(px);
             Push(() => Art.Children.Remove(px), () => Art.Children.Add(px));
@@ -1058,6 +1062,100 @@ public partial class EditorWindow : Window
         RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.NearestNeighbor);
         Canvas.SetLeft(img, (int)r.X); Canvas.SetTop(img, (int)r.Y);
         return img;
+    }
+
+    /// <summary>Weichgezeichneter Bereich (Gaußähnlich: dreifacher Boxfilter), Stärke über den Regler.</summary>
+    UIElement? MakeSoften(Rect r)
+    {
+        r.Intersect(new Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight));
+        if (r.Width < 3 || r.Height < 3) return null;
+        int w = (int)r.Width, h = (int)r.Height;
+        var crop = new CroppedBitmap(bmp, new Int32Rect((int)r.X, (int)r.Y, w, h));
+        var conv = new FormatConvertedBitmap(crop, PixelFormats.Bgra32, null, 0);
+        var px = new byte[w * h * 4];
+        conv.CopyPixels(px, w * 4, 0);
+        int rad = (int)Math.Clamp(2 + thick * 1.6, 2, Math.Min(w, h) / 2.0);
+        BlurBgra(px, w, h, Math.Max(1, rad));
+        var res = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, w * 4);
+        res.Freeze();
+        var img = new Image { Source = res, Width = w, Height = h, Stretch = Stretch.Fill };
+        Canvas.SetLeft(img, (int)r.X); Canvas.SetTop(img, (int)r.Y);
+        return img;
+    }
+
+    /// <summary>Boxfilter-Weichzeichner (3 Durchgänge ≈ Gauß) auf einem BGRA-Puffer, Ränder werden festgehalten.</summary>
+    static void BlurBgra(byte[] px, int w, int h, int r)
+    {
+        var tmp = new byte[px.Length];
+        for (int pass = 0; pass < 3; pass++)
+        {
+            BoxPass(px, tmp, w, h, r, true);
+            BoxPass(tmp, px, w, h, r, false);
+        }
+    }
+
+    static void BoxPass(byte[] src, byte[] dst, int w, int h, int r, bool horizontal)
+    {
+        int len = horizontal ? w : h, lines = horizontal ? h : w;
+        int step = horizontal ? 4 : w * 4;
+        int lineStep = horizontal ? w * 4 : 4;
+        double inv = 1.0 / (2 * r + 1);
+        for (int line = 0; line < lines; line++)
+        {
+            int baseIdx = line * lineStep;
+            for (int c = 0; c < 4; c++)
+            {
+                double sum = 0;
+                for (int k = -r; k <= r; k++) sum += src[baseIdx + Math.Clamp(k, 0, len - 1) * step + c];
+                for (int i = 0; i < len; i++)
+                {
+                    dst[baseIdx + i * step + c] = (byte)(sum * inv + 0.5);
+                    int add = Math.Min(i + r + 1, len - 1), sub = Math.Max(i - r, 0);
+                    sum += src[baseIdx + add * step + c] - src[baseIdx + sub * step + c];
+                }
+            }
+        }
+    }
+
+    /// <summary>Schlagschatten um das ganze Bild: Rand mit weichem Schatten (PNG: transparent, JPG: weiß).</summary>
+    void ApplyImageShadow()
+    {
+        CommitText();
+        Select(null);
+        const int m = 28, dx = 6, dy = 8, rad = 7;
+        var old = bmp;
+        int iw = old.PixelWidth, ih = old.PixelHeight, W = iw + 2 * m, H = ih + 2 * m;
+        bool transparent = settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
+
+        var mask = new byte[W * H * 4];
+        for (int y = m + dy; y < m + dy + ih && y < H; y++)
+            for (int x = m + dx; x < m + dx + iw && x < W; x++)
+                mask[(y * W + x) * 4 + 3] = 255;
+        BlurBgra(mask, W, H, rad);
+
+        var img = new FormatConvertedBitmap(old, PixelFormats.Bgra32, null, 0);
+        var ip = new byte[iw * ih * 4];
+        img.CopyPixels(ip, iw * 4, 0);
+
+        var outp = new byte[W * H * 4];
+        for (int i = 0; i < W * H; i++)
+        {
+            double a = mask[i * 4 + 3] / 255.0 * 0.5;
+            int o = i * 4;
+            if (transparent) { outp[o] = outp[o + 1] = outp[o + 2] = 0; outp[o + 3] = (byte)(a * 255 + 0.5); }
+            else { byte v = (byte)(255 * (1 - a) + 0.5); outp[o] = outp[o + 1] = outp[o + 2] = v; outp[o + 3] = 255; }
+        }
+        for (int y = 0; y < ih; y++)
+            Buffer.BlockCopy(ip, y * iw * 4, outp, ((y + m) * W + m) * 4, iw * 4);
+        var nb = BitmapSource.Create(W, H, 96, 96, PixelFormats.Bgra32, null, outp, W * 4);
+        nb.Freeze();
+
+        Action doIt = () => { SetBitmap(nb); Shift(m, m); };
+        Action undo = () => { SetBitmap(old); Shift(-m, -m); };
+        doIt();
+        Push(undo, doIt);
+        RefreshSel();
+        FitZoom();
     }
 
     void ApplyCrop(Rect r)
