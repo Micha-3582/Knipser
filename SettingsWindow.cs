@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -22,6 +22,9 @@ internal class SettingsWindow : Window
     readonly CheckBox openEditor = new() { Content = "Nach der Aufnahme den Editor öffnen" };
     readonly CheckBox saveOnClose = new() { Content = "Beim Schließen des Editors automatisch speichern" };
     readonly CheckBox copy = new() { Content = "Aufnahme automatisch in die Zwischenablage kopieren" };
+    readonly CheckBox cursorCb = new() { Content = "Mauszeiger im Bild mit aufnehmen" };
+    readonly Slider delay = new() { Minimum = 0, Maximum = 10, Width = 130, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
+    readonly TextBlock delayText = new() { Width = 60, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right };
     readonly CheckBox autostart = new() { Content = "Mit Windows starten" };
     readonly TextBlock msg = new() { Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x8A, 0x65)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
 
@@ -122,7 +125,15 @@ internal class SettingsWindow : Window
         root.Children.Add(qr);
 
         root.Children.Add(Head("Verhalten"));
-        foreach (var c in new[] { openEditor, saveOnClose, copy, autostart })
+        var dr = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
+        dr.Children.Add(new TextBlock { Text = "Aufnahmeverzögerung", Width = 230, VerticalAlignment = VerticalAlignment.Center });
+        dr.Children.Add(delay); dr.Children.Add(delayText);
+        delay.Value = Math.Clamp(s.CaptureDelay, 0, 10);
+        void ShowDelay() => delayText.Text = delay.Value < 1 ? "sofort" : $"{(int)delay.Value} s";
+        ShowDelay();
+        delay.ValueChanged += (_, _) => ShowDelay();
+        root.Children.Add(dr);
+        foreach (var c in new[] { cursorCb, openEditor, saveOnClose, copy, autostart })
         {
             c.Foreground = Foreground; c.Margin = new Thickness(0, 3, 0, 3);
             root.Children.Add(c);
@@ -153,6 +164,7 @@ internal class SettingsWindow : Window
         folder.Text = s.SaveFolder;
         openEditor.IsChecked = s.OpenEditor; saveOnClose.IsChecked = s.SaveOnClose; copy.IsChecked = s.CopyToClipboard;
         autostart.IsChecked = GetAutostart();
+        cursorCb.IsChecked = s.IncludeCursor;
         checkUpd.IsChecked = s.CheckUpdates;
 
         foreach (var t in new[] { region, full, win, scroll, picker, magnifier, rulerKey })
@@ -264,6 +276,8 @@ internal class SettingsWindow : Window
         s.ImageFormat = png.IsChecked == true ? "png" : "jpg";
         s.JpgQuality = (int)quality.Value;
         s.CheckUpdates = checkUpd.IsChecked == true;
+        s.CaptureDelay = (int)delay.Value;
+        s.IncludeCursor = cursorCb.IsChecked == true;
         s.OpenEditor = openEditor.IsChecked == true;
         s.SaveOnClose = saveOnClose.IsChecked == true;
         s.CopyToClipboard = copy.IsChecked == true;

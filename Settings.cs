@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text.Json;
 
@@ -14,6 +14,10 @@ public class Settings
     public int JpgQuality { get; set; } = 92;
     /// <summary>Beim Start still nach neuer Version suchen (kein Popup, nur Eintrag im Tray-Menü).</summary>
     public bool CheckUpdates { get; set; } = true;
+    /// <summary>Sekunden Wartezeit vor der Aufnahme (0 = sofort).</summary>
+    public int CaptureDelay { get; set; } = 0;
+    /// <summary>Mauszeiger im Bild mitfotografieren.</summary>
+    public bool IncludeCursor { get; set; } = false;
     public bool OpenEditor { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
     /// <summary>Editor schließen speichert das Bild automatisch (wie bei PicPick).</summary>

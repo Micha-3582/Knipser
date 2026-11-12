@@ -12,11 +12,40 @@ internal static class Capture
 {
     public static Rectangle VirtualScreen => Forms.SystemInformation.VirtualScreen;
 
-    public static BitmapSource Grab(Rectangle r)
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct CURSORINFO { public int cbSize, flags; public IntPtr hCursor; public int x, y; }
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct ICONINFO { public bool fIcon; public int xHotspot, yHotspot; public IntPtr hbmMask, hbmColor; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool GetCursorInfo(ref CURSORINFO ci);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool GetIconInfo(IntPtr h, out ICONINFO ii);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool DrawIconEx(IntPtr hdc, int x, int y, IntPtr hIcon, int w, int h, int step, IntPtr br, int flags);
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr o);
+
+    /// <summary>Zeichnet den Mauszeiger (falls sichtbar) in das Bild, das den Bildschirmbereich r zeigt.</summary>
+    static void DrawCursor(Graphics g, Rectangle r)
+    {
+        var ci = new CURSORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<CURSORINFO>() };
+        if (!GetCursorInfo(ref ci) || (ci.flags & 1) == 0 || ci.hCursor == IntPtr.Zero) return;
+        int hx = 0, hy = 0;
+        if (GetIconInfo(ci.hCursor, out var ii))
+        {
+            hx = ii.xHotspot; hy = ii.yHotspot;
+            if (ii.hbmMask != IntPtr.Zero) DeleteObject(ii.hbmMask);
+            if (ii.hbmColor != IntPtr.Zero) DeleteObject(ii.hbmColor);
+        }
+        var hdc = g.GetHdc();
+        try { DrawIconEx(hdc, ci.x - hx - r.X, ci.y - hy - r.Y, ci.hCursor, 0, 0, 0, IntPtr.Zero, 3); }
+        finally { g.ReleaseHdc(hdc); }
+    }
+
+    public static BitmapSource Grab(Rectangle r, bool withCursor = false)
     {
         using var bmp = new Bitmap(r.Width, r.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(bmp))
+        {
             g.CopyFromScreen(r.X, r.Y, 0, 0, r.Size, CopyPixelOperation.SourceCopy);
+            if (withCursor) DrawCursor(g, r);
+        }
 
         var data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         try

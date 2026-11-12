@@ -221,14 +221,27 @@ public partial class App : Application
         Shutdown();
     }
 
-    void CaptureRegion()
+    /// <summary>Wartezeit vor der Aufnahme mit kleiner Zähler-Anzeige (wird vor dem Foto wieder geschlossen).</summary>
+    async System.Threading.Tasks.Task Delay()
+    {
+        int sec = Math.Clamp(Settings.CaptureDelay, 0, 30);
+        if (sec <= 0) return;
+        var w = new Countdown();
+        w.Show();
+        try { for (int i = sec; i > 0; i--) { w.Set(i); await System.Threading.Tasks.Task.Delay(1000); } }
+        finally { w.Close(); }
+        await System.Threading.Tasks.Task.Delay(150);   // Fenster ist sicher weg
+    }
+
+    async void CaptureRegion()
     {
         if (busy) return;
         busy = true;
         try
         {
+            await Delay();
             var vs = Capture.VirtualScreen;
-            var shot = Capture.Grab(vs);
+            var shot = Capture.Grab(vs, Settings.IncludeCursor);
             var ov = new SelectionOverlay(shot, vs);
             ov.ShowDialog();
             if (ov.Result is Int32Rect r)
@@ -265,6 +278,7 @@ public partial class App : Application
         busy = true;
         try
         {
+            await Delay();
             var vs = Capture.VirtualScreen;
             var shot = Capture.Grab(vs);
             var ov = new SelectionOverlay(shot, vs);
@@ -286,17 +300,25 @@ public partial class App : Application
         finally { busy = false; }
     }
 
-    void CaptureFullscreen()
+    async void CaptureFullscreen()
     {
         if (busy) return;
-        Finish(Capture.Grab(Capture.VirtualScreen));
+        busy = true;
+        try { await Delay(); Finish(Capture.Grab(Capture.VirtualScreen, Settings.IncludeCursor)); }
+        finally { busy = false; }
     }
 
-    void CaptureWindow()
+    async void CaptureWindow()
     {
         if (busy) return;
-        var r = Capture.WindowUnderCursor();
-        if (r is Rectangle rect) Finish(Capture.Grab(rect));
+        busy = true;
+        try
+        {
+            await Delay();
+            var r = Capture.WindowUnderCursor();
+            if (r is Rectangle rect) Finish(Capture.Grab(rect, Settings.IncludeCursor));
+        }
+        finally { busy = false; }
     }
 
     void OpenClipboard()
