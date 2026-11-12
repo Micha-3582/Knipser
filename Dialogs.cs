@@ -122,6 +122,8 @@ internal class BrightnessDialog : DarkDialog
 internal class FrameDialog : DarkDialog
 {
     public int FrameWidth => (int)ws.Value;
+    public int Radius => (int)rs.Value;
+    readonly Slider rs = new() { Minimum = 0, Maximum = 100, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
     public Color FrameColor { get; private set; }
     readonly Slider ws = new() { Minimum = 1, Maximum = 100, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
     readonly TextBox hex = Field(90);
@@ -130,14 +132,19 @@ internal class FrameDialog : DarkDialog
 
     static readonly string[] Palette = { "#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#000000", "#FFFFFF", "#9E9E9E", "#37474F" };
 
-    public FrameDialog(int width, Color color) : base("Rahmen um das Bild")
+    public FrameDialog(int width, Color color, int radius) : base("Rahmen um das Bild")
     {
+        rs.Value = Math.Clamp(radius, 0, 100);
         FrameColor = color;
         ws.Value = Math.Clamp(width, 1, 100);
         var wt = new TextBlock { Width = 50, Text = $"{(int)ws.Value} px", TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
         var r1 = new StackPanel { Orientation = Orientation.Horizontal }; r1.Children.Add(ws); r1.Children.Add(wt);
         Body.Children.Add(Line("Breite", r1));
         ws.ValueChanged += (_, _) => wt.Text = $"{(int)ws.Value} px";
+        var rt = new TextBlock { Width = 50, Text = $"{(int)rs.Value} px", TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+        var r2 = new StackPanel { Orientation = Orientation.Horizontal }; r2.Children.Add(rs); r2.Children.Add(rt);
+        Body.Children.Add(Line("Eckenradius", r2));
+        rs.ValueChanged += (_, _) => rt.Text = $"{(int)rs.Value} px";
 
         var sw = new WrapPanel { Width = 230 };
         foreach (var h in Palette)
@@ -175,12 +182,15 @@ internal class ShadowDialog : DarkDialog
     public int Offset => (int)os.Value;
     public int Blur => (int)bs.Value;
     public int Opacity => (int)ps.Value;
+    public int Radius => (int)rs.Value;
+    readonly Slider rs = new() { Minimum = 0, Maximum = 100, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
     readonly Slider os = new() { Minimum = 0, Maximum = 30, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
     readonly Slider bs = new() { Minimum = 1, Maximum = 30, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
     readonly Slider ps = new() { Minimum = 10, Maximum = 100, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
 
-    public ShadowDialog(int offset, int blur, int opacity) : base("Schlagschatten um das Bild")
+    public ShadowDialog(int offset, int blur, int opacity, int radius) : base("Schlagschatten um das Bild")
     {
+        rs.Value = Math.Clamp(radius, 0, 100);
         os.Value = Math.Clamp(offset, 0, 30); bs.Value = Math.Clamp(blur, 1, 30); ps.Value = Math.Clamp(opacity, 10, 100);
         void Row(string label, Slider s, string unit)
         {
@@ -189,6 +199,6 @@ internal class ShadowDialog : DarkDialog
             s.ValueChanged += (_, _) => t.Text = $"{(int)s.Value}{unit}";
             Body.Children.Add(Line(label, r));
         }
-        Row("Abstand", os, " px"); Row("Weichheit", bs, " px"); Row("Deckkraft", ps, " %");
+        Row("Abstand", os, " px"); Row("Weichheit", bs, " px"); Row("Deckkraft", ps, " %"); Row("Eckenradius", rs, " px");
     }
 }

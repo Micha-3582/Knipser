@@ -1138,41 +1138,50 @@ public partial class EditorWindow : Window
     {
         CommitText();
         Select(null);
-        var dlg = new ShadowDialog(settings.ShadowOffset, settings.ShadowBlur, settings.ShadowOpacity) { Owner = this };
+        var dlg = new ShadowDialog(settings.ShadowOffset, settings.ShadowBlur, settings.ShadowOpacity, settings.ShadowRadius) { Owner = this };
         if (dlg.ShowDialog() != true) return;
-        settings.ShadowOffset = dlg.Offset; settings.ShadowBlur = dlg.Blur; settings.ShadowOpacity = dlg.Opacity;
+        settings.ShadowOffset = dlg.Offset; settings.ShadowBlur = dlg.Blur; settings.ShadowOpacity = dlg.Opacity; settings.ShadowRadius = dlg.Radius;
         settings.Save();
-        DoImageShadow(dlg.Offset, dlg.Blur, dlg.Opacity / 100.0);
+        DoImageShadow(dlg.Offset, dlg.Blur, dlg.Opacity / 100.0, dlg.Radius);
     }
 
-    void DoImageShadow(int offset, int rad, double opacity)
+    void DoImageShadow(int offset, int rad, double opacity, int radius)
     {
         int dx = offset, dy = (int)Math.Round(offset * 1.3), m = rad * 3 + offset + 4;
         var old = bmp;
         int iw = old.PixelWidth, ih = old.PixelHeight, W = iw + 2 * m, H = ih + 2 * m;
         bool transparent = settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
+        double rr = Math.Min(radius, Math.Min(iw, ih) / 2.0);
 
+        // Schattenform (auch mit runden Ecken) als Maske zeichnen und weichzeichnen
+        var mdv = new DrawingVisual();
+        using (var dc = mdv.RenderOpen())
+            dc.DrawRoundedRectangle(Brushes.Black, null, new Rect(m + dx, m + dy, iw, ih), rr, rr);
+        var mrt = new RenderTargetBitmap(W, H, 96, 96, PixelFormats.Pbgra32);
+        mrt.Render(mdv);
         var mask = new byte[W * H * 4];
-        for (int y = m + dy; y < m + dy + ih && y < H; y++)
-            for (int x = m + dx; x < m + dx + iw && x < W; x++)
-                mask[(y * W + x) * 4 + 3] = 255;
+        mrt.CopyPixels(mask, W * 4, 0);
         BlurBgra(mask, W, H, rad);
 
-        var img = new FormatConvertedBitmap(old, PixelFormats.Bgra32, null, 0);
-        var ip = new byte[iw * ih * 4];
-        img.CopyPixels(ip, iw * 4, 0);
-
-        var outp = new byte[W * H * 4];
+        var sh = new byte[W * H * 4];
         for (int i = 0; i < W * H; i++)
         {
             double a = mask[i * 4 + 3] / 255.0 * opacity;
             int o = i * 4;
-            if (transparent) { outp[o] = outp[o + 1] = outp[o + 2] = 0; outp[o + 3] = (byte)(a * 255 + 0.5); }
-            else { byte v = (byte)(255 * (1 - a) + 0.5); outp[o] = outp[o + 1] = outp[o + 2] = v; outp[o + 3] = 255; }
+            if (transparent) { sh[o] = sh[o + 1] = sh[o + 2] = 0; sh[o + 3] = (byte)(a * 255 + 0.5); }
+            else { byte v = (byte)(255 * (1 - a) + 0.5); sh[o] = sh[o + 1] = sh[o + 2] = v; sh[o + 3] = 255; }
         }
-        for (int y = 0; y < ih; y++)
-            Buffer.BlockCopy(ip, y * iw * 4, outp, ((y + m) * W + m) * 4, iw * 4);
-        var nb = BitmapSource.Create(W, H, 96, 96, PixelFormats.Bgra32, null, outp, W * 4);
+        var shBmp = BitmapSource.Create(W, H, 96, 96, PixelFormats.Bgra32, null, sh, W * 4);
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawImage(shBmp, new Rect(0, 0, W, H));
+            dc.PushClip(new RectangleGeometry(new Rect(m, m, iw, ih), rr, rr));
+            dc.DrawImage(old, new Rect(m, m, iw, ih));
+            dc.Pop();
+        }
+        var nb = new RenderTargetBitmap(W, H, 96, 96, PixelFormats.Pbgra32);
+        nb.Render(dv);
         nb.Freeze();
 
         Action doIt = () => { SetBitmap(nb); Shift(m, m); };
@@ -1190,29 +1199,31 @@ public partial class EditorWindow : Window
         Select(null);
         Color start;
         try { start = (Color)ColorConverter.ConvertFromString(settings.FrameColor); } catch { start = Color.FromRgb(0xE5, 0x39, 0x35); }
-        var dlg = new FrameDialog(settings.FrameWidth, start) { Owner = this };
+        var dlg = new FrameDialog(settings.FrameWidth, start, settings.FrameRadius) { Owner = this };
         if (dlg.ShowDialog() != true) return;
-        settings.FrameWidth = dlg.FrameWidth;
+        settings.FrameWidth = dlg.FrameWidth; settings.FrameRadius = dlg.Radius;
         settings.FrameColor = $"#{dlg.FrameColor.R:X2}{dlg.FrameColor.G:X2}{dlg.FrameColor.B:X2}";
         settings.Save();
-        DoImageFrame(dlg.FrameWidth, dlg.FrameColor);
+        DoImageFrame(dlg.FrameWidth, dlg.FrameColor, dlg.Radius);
     }
 
-    void DoImageFrame(int b, Color color)
+    void DoImageFrame(int b, Color color, int radius)
     {
         var old = bmp;
         int iw = old.PixelWidth, ih = old.PixelHeight, W = iw + 2 * b, H = ih + 2 * b;
-        var img = new FormatConvertedBitmap(old, PixelFormats.Bgra32, null, 0);
-        var ip = new byte[iw * ih * 4];
-        img.CopyPixels(ip, iw * 4, 0);
-        var outp = new byte[W * H * 4];
-        for (int i = 0; i < W * H; i++)
+        bool transparent = settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
+        double outer = Math.Min(radius, Math.Min(W, H) / 2.0), inner = Math.Max(0, outer - b);
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
         {
-            outp[i * 4] = color.B; outp[i * 4 + 1] = color.G; outp[i * 4 + 2] = color.R; outp[i * 4 + 3] = 255;
+            if (!transparent && outer > 0) dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, W, H));   // JPG: Ecken außen weiß
+            dc.DrawRoundedRectangle(new SolidColorBrush(color), null, new Rect(0, 0, W, H), outer, outer);
+            dc.PushClip(new RectangleGeometry(new Rect(b, b, iw, ih), inner, inner));
+            dc.DrawImage(old, new Rect(b, b, iw, ih));
+            dc.Pop();
         }
-        for (int y = 0; y < ih; y++)
-            Buffer.BlockCopy(ip, y * iw * 4, outp, ((y + b) * W + b) * 4, iw * 4);
-        var nb = BitmapSource.Create(W, H, 96, 96, PixelFormats.Bgra32, null, outp, W * 4);
+        var nb = new RenderTargetBitmap(W, H, 96, 96, PixelFormats.Pbgra32);
+        nb.Render(dv);
         nb.Freeze();
         Action doIt = () => { SetBitmap(nb); Shift(b, b); };
         Action undo = () => { SetBitmap(old); Shift(-b, -b); };
