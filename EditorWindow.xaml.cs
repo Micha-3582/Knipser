@@ -178,7 +178,7 @@ public partial class EditorWindow : Window
             row.Children.Add(new TextBlock { Text = st == settings.ArrowStyle ? "✓" : "", Foreground = Ink, Width = 16, VerticalAlignment = VerticalAlignment.Center });
             row.Children.Add(new Path
             {
-                Data = ArrowGeo(new Point(4, 12), new Point(58, 12), true, 2.5, st), Stroke = Ink, StrokeThickness = 2.5, Fill = st == 2 ? null : Ink,
+                Data = ArrowGeo(new Point(4, 12), new Point(st == 4 ? 50 : 58, 12), true, 2.5, st), Stroke = Ink, StrokeThickness = 2.5, Fill = st == 2 ? null : Ink,
                 StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, Width = 64, Height = 24,
             });
             row.Children.Add(new TextBlock { Text = ArrowNames[i], Foreground = Ink, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 6, 0), MinWidth = 60 });
