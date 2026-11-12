@@ -395,7 +395,7 @@ public partial class EditorWindow : Window
             cpWin = null;
             HideLoupe();
             Art.Cursor = tool == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
-            Status.Text = $"{bmp.PixelWidth} × {bmp.PixelHeight} px";
+            Status.Text = Hint;
         };
         Art.Cursor = PipetteCursor();
         Status.Text = "Farbwähler: ins Bild klicken, um eine Farbe aufzunehmen.";
@@ -460,7 +460,7 @@ public partial class EditorWindow : Window
         HideLoupe();
         if (colorBox != null) colorBox.Background = new SolidColorBrush(color);
         Art.Cursor = cpWin != null ? PipetteCursor() : tool == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
-        Status.Text = $"{bmp.PixelWidth} × {bmp.PixelHeight} px";
+        Status.Text = Hint;
     }
 
     Color? SampleAt(Point p)
@@ -566,9 +566,11 @@ public partial class EditorWindow : Window
         Art.MouseLeave += (_, _) =>
         {
             cpWin?.ClearPreview();
+            PosText.Text = "";
             HideLoupe();
             if (picking && colorBox != null) colorBox.Background = new SolidColorBrush(color);
         };
+        ZoomSlider.ValueChanged += (_, e) => { if (!zoomSync) SetZoom(e.NewValue / 100); };
         var panels = new Dictionary<string, StackPanel>();
 
         // --- Kopfzeile: Schnellzugriff + Reiter ---
@@ -618,6 +620,7 @@ public partial class EditorWindow : Window
             BigBtn(Glyph("\uE8C8"), "Kopieren", (_, _) => CopyToClipboard()),
             BigBtn(Glyph("\uE749"), "Drucken", (_, _) => PrintImage())));
         panels["Datei"].Children.Add(Group("Programm",
+            BigBtn(Glyph("\uE8A7"), "Öffnen mit", (_, _) => OpenExternal(), "Bild speichern und im externen Programm öffnen (Einstellungen → Speichern)"),
             BigBtn(Glyph("\uE713"), "Einstellungen", (_, _) => ((App)Application.Current).ShowSettings())));
 
         // --- Reiter Start ---
@@ -722,13 +725,19 @@ public partial class EditorWindow : Window
         baseImg.Width = b.PixelWidth; baseImg.Height = b.PixelHeight;
         Art.Width = b.PixelWidth; Art.Height = b.PixelHeight;
         Sel.Width = b.PixelWidth; Sel.Height = b.PixelHeight;
-        Status.Text = $"{b.PixelWidth} × {b.PixelHeight} px  ·  Elemente verschieben: Auswahl-Werkzeug oder Strg+Ziehen, Anfasser zum Ändern der Größe";
+        Status.Text = Hint;
+        SizeText.Text = $"{b.PixelWidth} × {b.PixelHeight} px";
     }
+
+    const string Hint = "Elemente verschieben: Auswahl-Werkzeug oder Strg+Ziehen, Anfasser zum Ändern der Größe";
+    bool zoomSync;
 
     void SetZoom(double z)
     {
         z = Math.Clamp(z, 0.1, 8);
         Zoom.ScaleX = Zoom.ScaleY = z;
+        zoomSync = true; ZoomSlider.Value = Math.Clamp(z * 100, 10, 400); zoomSync = false;
+        ZoomText.Text = $"{Math.Round(z * 100)} %";
         PositionSel();
     }
 
@@ -899,6 +908,7 @@ public partial class EditorWindow : Window
     void Art_Move(object sender, MouseEventArgs e)
     {
         var p = e.GetPosition(Art);
+        PosText.Text = $"{(int)Math.Floor(p.X)}, {(int)Math.Floor(p.Y)}";
         if (picking || cpWin != null)
         {
             ShowLoupe(p, e.GetPosition(LoupeLayer), SampleAt(p));
@@ -1823,6 +1833,21 @@ public partial class EditorWindow : Window
         UpdateSel();
     }
 
+    // ---------- Externes Programm ----------
+    void OpenExternal()
+    {
+        if (string.IsNullOrWhiteSpace(settings.ExternalProgram)) { Status.Text = "Erst in den Einstellungen unter „Speichern“ ein Programm wählen."; return; }
+        try
+        {
+            Directory.CreateDirectory(settings.SaveFolder);
+            var path = settings.UniquePath(Ext);
+            SaveTo(path);
+            var args = string.IsNullOrWhiteSpace(settings.ExternalArgs) ? $"\"{path}\"" : settings.ExternalArgs.Replace("%f", $"\"{path}\"");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(settings.ExternalProgram, args) { UseShellExecute = false });
+        }
+        catch (Exception ex) { Status.Text = "Programm konnte nicht gestartet werden: " + ex.Message; }
+    }
+
     // ---------- Drucken ----------
     void PrintImage()
     {
@@ -1911,7 +1936,7 @@ public partial class EditorWindow : Window
         cropHandles.Clear();
         if (cropApplyBtn != null) cropApplyBtn.Visibility = Visibility.Collapsed;
         if (cropCancelBtn != null) cropCancelBtn.Visibility = Visibility.Collapsed;
-        Status.Text = $"{bmp.PixelWidth} × {bmp.PixelHeight} px";
+        Status.Text = Hint;
     }
 
     void CancelCrop()

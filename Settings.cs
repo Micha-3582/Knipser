@@ -53,6 +53,17 @@ public class Settings
     public int PickSample { get; set; } = 1;
     /// <summary>Lupe der Pipette: sichtbarer Ausschnitt in Pixeln (Mausrad ändert ihn).</summary>
     public int LoupePixels { get; set; } = 15;
+    /// <summary>Editor-Fenster vor der Aufnahme ausblenden (damit sie nicht mit fotografiert werden).</summary>
+    public bool HideEditorOnCapture { get; set; } = true;
+    /// <summary>Bildschirm außerhalb der Auswahl abdunkeln.</summary>
+    public bool DimOutside { get; set; } = true;
+    /// <summary>Scrollende Aufnahme: Wartezeit nach jedem Mausrad-Schritt in Millisekunden.</summary>
+    public int ScrollDelayMs { get; set; } = 300;
+    /// <summary>Laufende Nummer für den Platzhalter {n} im Dateinamen.</summary>
+    public int FileCounter { get; set; } = 0;
+    /// <summary>Externes Programm zum Öffnen der Aufnahme (Editor: Datei → Öffnen mit), Parameter mit %f für den Dateipfad.</summary>
+    public string ExternalProgram { get; set; } = "";
+    public string ExternalArgs { get; set; } = "";
     public bool OpenEditor { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
     /// <summary>Editor schließen speichert das Bild automatisch (wie bei PicPick).</summary>
@@ -65,10 +76,11 @@ public class Settings
     public string HotkeyMagnifier { get; set; } = "Ctrl+Shift+F11";
     public string HotkeyRuler { get; set; } = "Ctrl+Shift+F12";
 
-    /// <summary>Dateiname (ohne Endung) aus dem Muster, ungültige Zeichen entfernt.</summary>
-    public string MakeFileName()
+    /// <summary>Dateiname aus einem Muster: {n} laufende Nummer, {user} Benutzer, {pc} Computer, sonst Datum/Uhrzeit in { }.</summary>
+    public static string Expand(string pattern, int counter)
     {
-        var pat = string.IsNullOrWhiteSpace(FileNamePattern) ? "Knipser_{yyyy-MM-dd_HH-mm-ss}" : FileNamePattern;
+        var pat = string.IsNullOrWhiteSpace(pattern) ? "Knipser_{yyyy-MM-dd_HH-mm-ss}" : pattern;
+        pat = pat.Replace("{n}", counter.ToString("000")).Replace("{user}", Environment.UserName).Replace("{pc}", Environment.MachineName);
         var name = Regex.Replace(pat, @"\{([^{}]+)\}", m =>
         {
             try { return DateTime.Now.ToString(m.Groups[1].Value); } catch { return m.Value; }
@@ -78,12 +90,16 @@ public class Settings
         return name.Length == 0 ? "Knipser" : name;
     }
 
+    /// <summary>Dateiname (ohne Endung) aus dem Muster, ungültige Zeichen entfernt.</summary>
+    public string MakeFileName() => Expand(FileNamePattern, FileCounter + 1);
+
     /// <summary>Freien Dateipfad im Speicherordner (hängt bei Bedarf _2, _3 … an).</summary>
     public string UniquePath(string ext)
     {
         var baseName = MakeFileName();
         var p = Path.Combine(SaveFolder, baseName + "." + ext);
         for (int i = 2; File.Exists(p); i++) p = Path.Combine(SaveFolder, $"{baseName}_{i}.{ext}");
+        if (FileNamePattern.Contains("{n}")) { FileCounter++; Save(); }
         return p;
     }
 

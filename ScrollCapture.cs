@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -19,6 +19,7 @@ internal static class ScrollCapture
     [DllImport("user32.dll")] static extern void mouse_event(uint flags, int dx, int dy, int data, int extra);
     const uint MOUSEEVENTF_WHEEL = 0x0800;
 
+    public static int WheelDelay = 300;
     const int MaxFrames = 80;
     const int MaxHeight = 30000;
     const int Samples = 256;       // Spalten pro Zeile für den Vergleich
@@ -49,10 +50,10 @@ internal static class ScrollCapture
             for (int attempt = 0; attempt < 3; attempt++)
             {
                 mouse_event(MOUSEEVENTF_WHEEL, 0, 0, -120 * 3, 0);
-                await Task.Delay(300);
+                await Task.Delay(WheelDelay);
                 cur = await Settle(r, w, h);
                 if (!Similar(prev, cur)) break;
-                await Task.Delay(300);
+                await Task.Delay(WheelDelay);
             }
             if (cur == null || Similar(prev, cur)) { Log($"Bild {i + 1}: keine Bewegung -> Ende"); break; }   // Ende der Seite
 

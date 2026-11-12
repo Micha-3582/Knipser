@@ -228,15 +228,34 @@ public partial class App : Application
     }
 
     /// <summary>Wartezeit vor der Aufnahme mit kleiner Zähler-Anzeige (wird vor dem Foto wieder geschlossen).</summary>
+    readonly List<Window> hiddenEditors = new();
+
+    /// <summary>Offene Editor-Fenster kurz ausblenden, damit sie nicht mit fotografiert werden.</summary>
+    async System.Threading.Tasks.Task HideEditors()
+    {
+        if (!Settings.HideEditorOnCapture) return;
+        foreach (var w in Windows)
+            if (w is EditorWindow ew && ew.IsVisible) { hiddenEditors.Add(ew); }
+        foreach (var w in hiddenEditors) w.Hide();
+        if (hiddenEditors.Count > 0) await System.Threading.Tasks.Task.Delay(220);
+    }
+
+    void RestoreEditors()
+    {
+        foreach (var w in hiddenEditors) { w.ShowActivated = false; w.Show(); w.ShowActivated = true; }
+        hiddenEditors.Clear();
+    }
+
     async System.Threading.Tasks.Task Delay()
     {
         int sec = Math.Clamp(Settings.CaptureDelay, 0, 30);
-        if (sec <= 0) return;
+        if (sec <= 0) { await HideEditors(); return; }
         var w = new Countdown();
         w.Show();
         try { for (int i = sec; i > 0; i--) { w.Set(i); await System.Threading.Tasks.Task.Delay(1000); } }
         finally { w.Close(); }
         await System.Threading.Tasks.Task.Delay(150);   // Fenster ist sicher weg
+        await HideEditors();
     }
 
     async void CaptureRegion()
@@ -248,7 +267,7 @@ public partial class App : Application
             await Delay();
             var vs = Capture.VirtualScreen;
             var shot = Capture.Grab(vs, Settings.IncludeCursor);
-            var ov = new SelectionOverlay(shot, vs);
+            var ov = new SelectionOverlay(shot, vs, null, false, Settings.DimOutside);
             ov.ShowDialog();
             if (ov.Result is Int32Rect r)
             {
@@ -258,7 +277,7 @@ public partial class App : Application
                 Finish(crop);
             }
         }
-        finally { busy = false; }
+        finally { busy = false; RestoreEditors(); }
     }
 
     Rectangle? lastRegion;
@@ -272,7 +291,7 @@ public partial class App : Application
             await Delay();
             var vs = Capture.VirtualScreen;
             var shot = Capture.Grab(vs, Settings.IncludeCursor);
-            var ov = new SelectionOverlay(shot, vs, new System.Windows.Size(Math.Max(10, Settings.FixedWidth), Math.Max(10, Settings.FixedHeight)));
+            var ov = new SelectionOverlay(shot, vs, new System.Windows.Size(Math.Max(10, Settings.FixedWidth), Math.Max(10, Settings.FixedHeight)), false, Settings.DimOutside);
             ov.ShowDialog();
             if (ov.Result is Int32Rect r)
             {
@@ -282,7 +301,7 @@ public partial class App : Application
                 Finish(crop);
             }
         }
-        finally { busy = false; }
+        finally { busy = false; RestoreEditors(); }
     }
 
     async void CaptureRepeat()
@@ -295,7 +314,7 @@ public partial class App : Application
         }
         busy = true;
         try { await Delay(); Finish(Capture.Grab(rect, Settings.IncludeCursor)); }
-        finally { busy = false; }
+        finally { busy = false; RestoreEditors(); }
     }
 
     async void CaptureFreehand()
@@ -307,7 +326,7 @@ public partial class App : Application
             await Delay();
             var vs = Capture.VirtualScreen;
             var shot = Capture.Grab(vs, Settings.IncludeCursor);
-            var ov = new SelectionOverlay(shot, vs, null, true);
+            var ov = new SelectionOverlay(shot, vs, null, true, Settings.DimOutside);
             ov.ShowDialog();
             if (ov.Result is Int32Rect r && ov.FreePoints is { } pts)
             {
@@ -334,7 +353,7 @@ public partial class App : Application
                 Finish(rtb);
             }
         }
-        finally { busy = false; }
+        finally { busy = false; RestoreEditors(); }
     }
 
     /// <summary>Farbwert (#RRGGBB) im eingestellten Format.</summary>
@@ -369,7 +388,7 @@ public partial class App : Application
                 tray?.ShowBalloonTip(1500, "Knipser", $"Farbe {txt} in die Zwischenablage kopiert.", Forms.ToolTipIcon.Info);
             }
         }
-        finally { busy = false; }
+        finally { busy = false; RestoreEditors(); }
     }
 
     async void CaptureScroll()
@@ -381,7 +400,7 @@ public partial class App : Application
             await Delay();
             var vs = Capture.VirtualScreen;
             var shot = Capture.Grab(vs);
-            var ov = new SelectionOverlay(shot, vs);
+            var ov = new SelectionOverlay(shot, vs, null, false, Settings.DimOutside);
             ov.ShowDialog();
             if (ov.Result is not Int32Rect r) return;
             await System.Threading.Tasks.Task.Delay(250);   // Overlay ist weg
@@ -389,6 +408,7 @@ public partial class App : Application
             var frame = new RegionFrame(rect);
             frame.Show();
             System.Windows.Media.Imaging.BitmapSource? result;
+            ScrollCapture.WheelDelay = Math.Clamp(Settings.ScrollDelayMs, 100, 2000);
             try { result = await ScrollCapture.Run(rect); }
             finally { frame.Close(); }
             if (result != null) Finish(result);
@@ -397,7 +417,7 @@ public partial class App : Application
         {
             tray?.ShowBalloonTip(4000, "Knipser", "Scroll-Aufnahme fehlgeschlagen: " + ex.Message, Forms.ToolTipIcon.Error);
         }
-        finally { busy = false; }
+        finally { busy = false; RestoreEditors(); }
     }
 
     async void CaptureFullscreen()
@@ -405,7 +425,7 @@ public partial class App : Application
         if (busy) return;
         busy = true;
         try { await Delay(); Finish(Capture.Grab(Capture.VirtualScreen, Settings.IncludeCursor)); }
-        finally { busy = false; }
+        finally { busy = false; RestoreEditors(); }
     }
 
     async void CaptureWindow()
@@ -418,7 +438,7 @@ public partial class App : Application
             var r = Capture.WindowUnderCursor();
             if (r is Rectangle rect) Finish(Capture.Grab(rect, Settings.IncludeCursor));
         }
-        finally { busy = false; }
+        finally { busy = false; RestoreEditors(); }
     }
 
     void OpenClipboard()
@@ -429,6 +449,7 @@ public partial class App : Application
 
     void Finish(BitmapSource bmp)
     {
+        RestoreEditors();
         if (Settings.CopyToClipboard)
         {
             try { Clipboard.SetImage(bmp); } catch { }

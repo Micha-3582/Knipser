@@ -109,7 +109,15 @@
             <StackPanel x:Name="Ribbon"/>
         </Border>
         <Border DockPanel.Dock="Bottom" Background="#262626" Padding="10,4">
-            <TextBlock x:Name="Status" Foreground="#AAAAAA" FontSize="12"/>
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <TextBlock x:Name="PosText" Foreground="#AAAAAA" FontSize="12" Width="90" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="SizeText" Foreground="#AAAAAA" FontSize="12" Width="110" VerticalAlignment="Center"/>
+                    <Slider x:Name="ZoomSlider" Width="130" Minimum="10" Maximum="400" VerticalAlignment="Center" ToolTip="Zoom"/>
+                    <TextBlock x:Name="ZoomText" Foreground="#AAAAAA" FontSize="12" Width="52" TextAlignment="Right" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock x:Name="Status" Foreground="#AAAAAA" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            </DockPanel>
         </Border>
         <Grid>
         <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"

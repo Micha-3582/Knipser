@@ -30,13 +30,14 @@ internal class SelectionOverlay : Window
     public List<Point>? FreePoints { get; private set; }
     readonly Size? fixedPx;
     readonly bool freehand;
+    readonly bool dimOn;
     readonly Polyline freeLine = new() { Stroke = Brushes.White, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 4, 3 }, IsHitTestVisible = false };
     readonly List<Point> free = new();
 
-    public SelectionOverlay(BitmapSource shot, Drawing.Rectangle virtualScreen, Size? fixedPixelSize = null, bool freehand = false)
+    public SelectionOverlay(BitmapSource shot, Drawing.Rectangle virtualScreen, Size? fixedPixelSize = null, bool freehand = false, bool dimOutside = true)
     {
         this.shot = shot;
-        fixedPx = fixedPixelSize; this.freehand = freehand;
+        fixedPx = fixedPixelSize; this.freehand = freehand; dimOn = dimOutside;
         vs = virtualScreen;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
@@ -77,6 +78,7 @@ internal class SelectionOverlay : Window
 
     void UpdateDim()
     {
+        if (!dimOn) { dim.Data = null; return; }
         double w = cv.ActualWidth, h = cv.ActualHeight;
         Geometry full = new RectangleGeometry(new Rect(0, 0, w, h));
         dim.Data = (start.HasValue || fixedPx.HasValue) && !freehand && sel.Width > 0 && sel.Height > 0

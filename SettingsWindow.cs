@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -29,6 +30,13 @@ internal class SettingsWindow : Window
     readonly TextBox fixedW = new() { Width = 60, Padding = new Thickness(4, 3, 4, 3) }, fixedH = new() { Width = 60, Padding = new Thickness(4, 3, 4, 3) };
     readonly TextBox pattern = new() { Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(6, 4, 6, 4), Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)) };
     readonly ComboBox colorFmt = new() { Width = 170 };
+    readonly CheckBox hideEditorCb = new() { Content = "Editor-Fenster vor der Aufnahme ausblenden" };
+    readonly CheckBox dimCb = new() { Content = "Bildschirm außerhalb der Auswahl abdunkeln" };
+    readonly Slider scrollDelay = new() { Minimum = 100, Maximum = 1500, Width = 150, IsSnapToTickEnabled = true, TickFrequency = 50, VerticalAlignment = VerticalAlignment.Center };
+    readonly TextBlock scrollDelayText = new() { Width = 70, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right };
+    readonly TextBox extProg = new() { Padding = new Thickness(6, 4, 6, 4), Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)) };
+    readonly TextBox extArgs = new() { Padding = new Thickness(6, 4, 6, 4), Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)) };
+    readonly TextBlock namePreview = new() { FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5)), Margin = new Thickness(0, 4, 0, 10) };
     readonly TextBlock msg = new() { Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x8A, 0x65)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
 
     readonly Button updBtn = new() { Content = "Nach Updates suchen", Padding = new Thickness(10, 4, 10, 4) };
@@ -87,101 +95,197 @@ internal class SettingsWindow : Window
         Background = new SolidColorBrush(Color.FromRgb(0x1B, 0x1B, 0x1B));
         Foreground = new SolidColorBrush(Color.FromRgb(0xEE, 0xEE, 0xEE));
 
-        var root = new StackPanel { Margin = new Thickness(20) };
-        root.Children.Add(Head("Tastenkürzel"));
-        root.Children.Add(Row("Bereich aufnehmen", region));
-        root.Children.Add(Row("Vollbild aufnehmen", full));
-        root.Children.Add(Row("Fenster unter dem Mauszeiger", win));
-        root.Children.Add(Row("Scrollende Aufnahme", scroll));
-        root.Children.Add(Row("Farbpipette", picker));
-        root.Children.Add(Row("Lupe", magnifier));
-        root.Children.Add(Row("Messen (Lineal)", rulerKey));
-        root.Children.Add(Row("Fester Bereich", fixedKey));
-        root.Children.Add(Row("Freihand-Auswahl", freeKey));
-        root.Children.Add(Row("Letzten Bereich wiederholen", repeatKey));
-        var fr2 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
-        fr2.Children.Add(new TextBlock { Text = "Größe des festen Bereichs (px)", Width = 230, VerticalAlignment = VerticalAlignment.Center });
-        fr2.Children.Add(fixedW);
-        fr2.Children.Add(new TextBlock { Text = " × ", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) });
-        fr2.Children.Add(fixedH);
-        root.Children.Add(fr2);
+        Width = 820; Height = 660; MinHeight = 480; MinWidth = 700;
+        SizeToContent = SizeToContent.Manual;
+        ResizeMode = ResizeMode.CanResize;
+        MaxHeight = SystemParameters.WorkArea.Height - 10;
 
-        root.Children.Add(Head("Speichern"));
-        var fr = new DockPanel { Margin = new Thickness(0, 2, 0, 6) };
-        var browse = new Button { Content = "Durchsuchen…", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(6, 0, 0, 0) };
-        DockPanel.SetDock(browse, Dock.Right);
-        fr.Children.Add(browse); fr.Children.Add(folder);
-        root.Children.Add(fr);
-        root.Children.Add(new TextBlock { Text = "Dateiname (Datum/Uhrzeit in { }, z. B. Knipser_{yyyy-MM-dd_HH-mm-ss})", Foreground = Brushes.Gray, FontSize = 12, Margin = new Thickness(0, 4, 0, 2) });
-        root.Children.Add(pattern);
-        browse.Click += (_, _) =>
+        // ---------- Seiten ----------
+        var pages = new Dictionary<string, FrameworkElement>();
+        StackPanel NewPage(string name)
         {
-            using var d = new Forms.FolderBrowserDialog { SelectedPath = folder.Text, Description = "Speicherordner für Screenshots" };
-            if (d.ShowDialog() == Forms.DialogResult.OK) folder.Text = d.SelectedPath;
-        };
+            var sp = new StackPanel { Margin = new Thickness(22, 4, 22, 14) };
+            var sv = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = sp, Visibility = Visibility.Collapsed };
+            pages[name] = sv;
+            return sp;
+        }
+        StackPanel Line(string label, UIElement ctl, double labelWidth = 230)
+        {
+            var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 6) };
+            p.Children.Add(new TextBlock { Text = label, Width = labelWidth, VerticalAlignment = VerticalAlignment.Center });
+            p.Children.Add(ctl);
+            return p;
+        }
+        void Checks(StackPanel page, params CheckBox[] boxes)
+        {
+            foreach (var c in boxes) { c.Foreground = Foreground; c.Margin = new Thickness(0, 4, 0, 4); page.Children.Add(c); }
+        }
 
-        var fmt = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
-        fmt.Children.Add(new TextBlock { Text = "Bildformat", Width = 230, VerticalAlignment = VerticalAlignment.Center });
-        fmt.Children.Add(jpg); fmt.Children.Add(png);
-        foreach (var rb in new[] { jpg, png }) { rb.Foreground = Foreground; rb.Margin = new Thickness(0, 0, 18, 0); }
-        jpg.IsChecked = !s.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
-        png.IsChecked = !jpg.IsChecked;
-        root.Children.Add(fmt);
-
-        var qr = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
-        qr.Children.Add(new TextBlock { Text = "JPG-Qualität", Width = 230, VerticalAlignment = VerticalAlignment.Center });
-        qr.Children.Add(quality);
-        qr.Children.Add(qualityText);
-        qr.Children.Add(new TextBlock { Text = "← kleiner", Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
-        quality.Value = Math.Clamp(s.JpgQuality, 1, 100);
-        qualityText.Text = ((int)quality.Value).ToString();
-        quality.ValueChanged += (_, e) => qualityText.Text = ((int)e.NewValue).ToString();
-        root.Children.Add(qr);
-
-        root.Children.Add(Head("Verhalten"));
-        var cr = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
-        cr.Children.Add(new TextBlock { Text = "Farbpipette kopiert als", Width = 230, VerticalAlignment = VerticalAlignment.Center });
+        // Allgemein
+        var pAllg = NewPage("Allgemein");
+        pAllg.Children.Add(Head("Start"));
+        Checks(pAllg, autostart, checkUpd);
+        pAllg.Children.Add(Head("Farbpipette"));
         colorFmt.Items.Add("Hex (#RRGGBB)"); colorFmt.Items.Add("RGB (rgb(r, g, b))"); colorFmt.Items.Add("C++ (0xRRGGBB)");
         colorFmt.SelectedIndex = s.ColorFormat switch { "rgb" => 1, "cpp" => 2, _ => 0 };
-        cr.Children.Add(colorFmt);
-        root.Children.Add(cr);
-        var dr = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
-        dr.Children.Add(new TextBlock { Text = "Aufnahmeverzögerung", Width = 230, VerticalAlignment = VerticalAlignment.Center });
+        pAllg.Children.Add(Line("Farbwert kopieren als", colorFmt));
+
+        // Editor
+        var pEd = NewPage("Editor");
+        pEd.Children.Add(Head("Editor-Optionen"));
+        Checks(pEd, openEditor, saveOnClose, hideEditorCb);
+
+        // Aufnahme
+        var pAuf = NewPage("Aufnahme");
+        pAuf.Children.Add(Head("Aufnahmeoptionen"));
+        Checks(pAuf, cursorCb, copy, dimCb);
+        var dr = new StackPanel { Orientation = Orientation.Horizontal };
         dr.Children.Add(delay); dr.Children.Add(delayText);
         delay.Value = Math.Clamp(s.CaptureDelay, 0, 10);
         void ShowDelay() => delayText.Text = delay.Value < 1 ? "sofort" : $"{(int)delay.Value} s";
         ShowDelay();
         delay.ValueChanged += (_, _) => ShowDelay();
-        root.Children.Add(dr);
-        foreach (var c in new[] { cursorCb, openEditor, saveOnClose, copy, autostart })
+        pAuf.Children.Add(Line("Zeitverzögerung", dr));
+        var fr2 = new StackPanel { Orientation = Orientation.Horizontal };
+        fr2.Children.Add(fixedW);
+        fr2.Children.Add(new TextBlock { Text = " × ", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) });
+        fr2.Children.Add(fixedH);
+        pAuf.Children.Add(Line("Fester Bereich (Pixel)", fr2));
+        pAuf.Children.Add(Head("Automatischer Bildlauf"));
+        var sd = new StackPanel { Orientation = Orientation.Horizontal };
+        sd.Children.Add(scrollDelay); sd.Children.Add(scrollDelayText);
+        scrollDelay.Value = Math.Clamp(s.ScrollDelayMs, 100, 1500);
+        void ShowScrollDelay() => scrollDelayText.Text = $"{(int)scrollDelay.Value} ms";
+        ShowScrollDelay();
+        scrollDelay.ValueChanged += (_, _) => ShowScrollDelay();
+        pAuf.Children.Add(Line("Wartezeit je Schritt", sd));
+        pAuf.Children.Add(new TextBlock { Text = "Bei Seiten mit Animationen oder langsamem Nachladen eine längere Wartezeit wählen.", Foreground = Brushes.Gray, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+
+        // Dateiname
+        var pName = NewPage("Dateiname");
+        pName.Children.Add(Head("Dateiname"));
+        pName.Children.Add(new TextBlock { Text = "Namensmuster für automatisch gespeicherte Bilder:", Margin = new Thickness(0, 0, 0, 4) });
+        pName.Children.Add(pattern);
+        pattern.Margin = new Thickness(0, 0, 0, 2);
+        pName.Children.Add(namePreview);
+        var help = new TextBlock { Foreground = Brushes.Gray, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6),
+            Text = "Platzhalter in geschweiften Klammern:\n" +
+                   "{yyyy} Jahr, {MM} Monat, {dd} Tag, {HH} Stunde, {mm} Minute, {ss} Sekunde (auch als Gruppe, z. B. {yyyy-MM-dd_HH-mm-ss})\n" +
+                   "{n} laufende Nummer, {user} Benutzername, {pc} Computername" };
+        pName.Children.Add(help);
+        pName.Children.Add(Head("Dateiformat"));
+        var fmt = new StackPanel { Orientation = Orientation.Horizontal };
+        fmt.Children.Add(jpg); fmt.Children.Add(png);
+        foreach (var rb in new[] { jpg, png }) { rb.Foreground = Foreground; rb.Margin = new Thickness(0, 0, 18, 0); }
+        jpg.IsChecked = !s.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
+        png.IsChecked = !jpg.IsChecked;
+        pName.Children.Add(Line("Bildformat", fmt));
+        var qr = new StackPanel { Orientation = Orientation.Horizontal };
+        qr.Children.Add(quality); qr.Children.Add(qualityText);
+        qr.Children.Add(new TextBlock { Text = "← kleiner", Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
+        quality.Value = Math.Clamp(s.JpgQuality, 1, 100);
+        qualityText.Text = ((int)quality.Value).ToString();
+        quality.ValueChanged += (_, e) => qualityText.Text = ((int)e.NewValue).ToString();
+        pName.Children.Add(Line("JPG-Qualität", qr));
+        void ShowPreviewName() => namePreview.Text = Settings.Expand(pattern.Text, s.FileCounter + 1) + (png.IsChecked == true ? ".png" : ".jpg");
+        pattern.TextChanged += (_, _) => ShowPreviewName();
+        jpg.Checked += (_, _) => ShowPreviewName(); png.Checked += (_, _) => ShowPreviewName();
+
+        // Speichern
+        var pSave = NewPage("Speichern");
+        pSave.Children.Add(Head("Speicherort"));
+        var fr = new DockPanel { Margin = new Thickness(0, 2, 0, 6) };
+        var browse = new Button { Content = "Durchsuchen…", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(6, 0, 0, 0) };
+        DockPanel.SetDock(browse, Dock.Right);
+        fr.Children.Add(browse); fr.Children.Add(folder);
+        pSave.Children.Add(fr);
+        browse.Click += (_, _) =>
         {
-            c.Foreground = Foreground; c.Margin = new Thickness(0, 3, 0, 3);
-            root.Children.Add(c);
-        }
-        root.Children.Add(Head("Updates"));
+            using var d = new Forms.FolderBrowserDialog { SelectedPath = folder.Text, Description = "Speicherordner für Screenshots" };
+            if (d.ShowDialog() == Forms.DialogResult.OK) folder.Text = d.SelectedPath;
+        };
+        pSave.Children.Add(Head("Externes Programm"));
+        pSave.Children.Add(new TextBlock { Text = "Programm, in dem Aufnahmen über „Datei → Öffnen mit“ geöffnet werden:", Margin = new Thickness(0, 0, 0, 4), TextWrapping = TextWrapping.Wrap });
+        var pr = new DockPanel { Margin = new Thickness(0, 2, 0, 6) };
+        var browseProg = new Button { Content = "Durchsuchen…", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(6, 0, 0, 0) };
+        DockPanel.SetDock(browseProg, Dock.Right);
+        pr.Children.Add(browseProg); pr.Children.Add(extProg);
+        pSave.Children.Add(pr);
+        browseProg.Click += (_, _) =>
+        {
+            var d = new OpenFileDialog { Filter = "Programme (*.exe)|*.exe|Alle Dateien|*.*" };
+            if (d.ShowDialog(this) == true) extProg.Text = d.FileName;
+        };
+        pSave.Children.Add(new TextBlock { Text = "Parameter (%f = Pfad der Bilddatei, leer = nur der Pfad):", Margin = new Thickness(0, 4, 0, 4) });
+        pSave.Children.Add(extArgs);
+
+        // Tastenkürzel
+        var pKeys = NewPage("Tastenkürzel");
+        pKeys.Children.Add(Head("Tastenkürzel"));
+        pKeys.Children.Add(Row("Bereich aufnehmen", region));
+        pKeys.Children.Add(Row("Vollbild aufnehmen", full));
+        pKeys.Children.Add(Row("Fenster unter dem Mauszeiger", win));
+        pKeys.Children.Add(Row("Scrollende Aufnahme", scroll));
+        pKeys.Children.Add(Row("Fester Bereich", fixedKey));
+        pKeys.Children.Add(Row("Freihand-Auswahl", freeKey));
+        pKeys.Children.Add(Row("Letzten Bereich wiederholen", repeatKey));
+        pKeys.Children.Add(Row("Farbpipette", picker));
+        pKeys.Children.Add(Row("Lupe", magnifier));
+        pKeys.Children.Add(Row("Messen (Lineal)", rulerKey));
+
+        // Info
+        var pInfo = NewPage("Über Knipser");
+        pInfo.Children.Add(Head("Knipser"));
         var ur = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 4) };
         ur.Children.Add(new TextBlock { Text = "Installierte Version: " + Updater.CurrentText, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0) });
         ur.Children.Add(updBtn);
-        root.Children.Add(ur);
-        root.Children.Add(updText);
-        checkUpd.Foreground = Foreground; checkUpd.Margin = new Thickness(0, 3, 0, 3);
-        root.Children.Add(checkUpd);
+        pInfo.Children.Add(ur);
+        pInfo.Children.Add(updText);
         updBtn.Click += async (_, _) => await UpdateClick();
         if (app.PendingUpdate != null) ShowPending(app.PendingUpdate);
+        pInfo.Children.Add(new TextBlock { Text = "Knipser ist ein freies Screenshot-Programm für Windows. Quelltext und Downloads: github.com/Micha-3582/Knipser", Foreground = Brushes.Gray, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 0) });
 
-        root.Children.Add(msg);
+        // ---------- Seitenleiste ----------
+        var side = new StackPanel();
+        var sideBorder = new Border { Width = 170, Background = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x22)), Child = side };
+        var tpl = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+            "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='RadioButton'>" +
+            "<Border x:Name='b' Background='Transparent' Padding='16,9' BorderThickness='3,0,0,0' BorderBrush='Transparent'><ContentPresenter VerticalAlignment='Center'/></Border>" +
+            "<ControlTemplate.Triggers>" +
+            "<Trigger Property='IsMouseOver' Value='True'><Setter TargetName='b' Property='Background' Value='#2D2D2D'/></Trigger>" +
+            "<Trigger Property='IsChecked' Value='True'><Setter TargetName='b' Property='Background' Value='#333333'/><Setter TargetName='b' Property='BorderBrush' Value='#42A5F5'/></Trigger>" +
+            "</ControlTemplate.Triggers></ControlTemplate>");
+        var area = new Grid();
+        foreach (var kv in pages) area.Children.Add(kv.Value);
+        bool first = true;
+        foreach (var kv in pages)
+        {
+            var name = kv.Key;
+            var rb = new RadioButton { Content = name, GroupName = "nav", Template = tpl, Foreground = Foreground, Cursor = Cursors.Hand, IsChecked = first };
+            rb.Checked += (_, _) => { foreach (var q in pages) q.Value.Visibility = q.Key == name ? Visibility.Visible : Visibility.Collapsed; };
+            side.Children.Add(rb);
+            first = false;
+        }
+        pages[pages.Keys.First()].Visibility = Visibility.Visible;
 
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
-        var ok = new Button { Content = "Speichern", Padding = new Thickness(18, 6, 18, 6), IsDefault = true };
-        var cancel = new Button { Content = "Abbrechen", Padding = new Thickness(18, 6, 18, 6), Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
+        // ---------- Unterkante ----------
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var ok = new Button { Content = "Speichern", Padding = new Thickness(20, 6, 20, 6), IsDefault = true };
+        var cancel = new Button { Content = "Abbrechen", Padding = new Thickness(20, 6, 20, 6), Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
         cancel.Click += (_, _) => Close();
         buttons.Children.Add(ok); buttons.Children.Add(cancel);
-        buttons.Margin = new Thickness(20, 8, 20, 14);
+        var bottom = new DockPanel { Margin = new Thickness(14, 8, 14, 12) };
+        DockPanel.SetDock(buttons, Dock.Right);
+        bottom.Children.Add(buttons);
+        msg.Margin = new Thickness(0, 0, 12, 0); msg.VerticalAlignment = VerticalAlignment.Center;
+        bottom.Children.Add(msg);
+
         var dock = new DockPanel();
-        DockPanel.SetDock(buttons, Dock.Bottom);
-        dock.Children.Add(buttons);
-        dock.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = root });
-        MaxHeight = SystemParameters.WorkArea.Height - 10;
+        DockPanel.SetDock(bottom, Dock.Bottom);
+        DockPanel.SetDock(sideBorder, Dock.Left);
+        dock.Children.Add(bottom);
+        dock.Children.Add(sideBorder);
+        dock.Children.Add(area);
         Content = dock;
 
         region.Text = s.HotkeyRegion; full.Text = s.HotkeyFullscreen; win.Text = s.HotkeyWindow; scroll.Text = s.HotkeyScroll;
@@ -191,6 +295,9 @@ internal class SettingsWindow : Window
         folder.Text = s.SaveFolder;
         openEditor.IsChecked = s.OpenEditor; saveOnClose.IsChecked = s.SaveOnClose; copy.IsChecked = s.CopyToClipboard;
         autostart.IsChecked = GetAutostart();
+        hideEditorCb.IsChecked = s.HideEditorOnCapture; dimCb.IsChecked = s.DimOutside;
+        extProg.Text = s.ExternalProgram; extArgs.Text = s.ExternalArgs;
+        ShowPreviewName();
         cursorCb.IsChecked = s.IncludeCursor;
         checkUpd.IsChecked = s.CheckUpdates;
 
@@ -309,6 +416,10 @@ internal class SettingsWindow : Window
         s.JpgQuality = (int)quality.Value;
         s.CheckUpdates = checkUpd.IsChecked == true;
         s.CaptureDelay = (int)delay.Value;
+        s.ScrollDelayMs = (int)scrollDelay.Value;
+        s.HideEditorOnCapture = hideEditorCb.IsChecked == true;
+        s.DimOutside = dimCb.IsChecked == true;
+        s.ExternalProgram = extProg.Text.Trim(); s.ExternalArgs = extArgs.Text.Trim();
         s.IncludeCursor = cursorCb.IsChecked == true;
         s.OpenEditor = openEditor.IsChecked == true;
         s.SaveOnClose = saveOnClose.IsChecked == true;
