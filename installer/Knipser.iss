@@ -26,7 +26,7 @@ UninstallDisplayName=Knipser
 SetupIconFile=..\Knipser.ico
 OutputDir={#OutDir}
 OutputBaseFilename=Knipser-Setup-{#MyVersion}
-Compression=lzma2
+Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 ; Pro Benutzer installieren: kein Administrator nötig, Updates aus dem Programm heraus funktionieren
@@ -65,53 +65,10 @@ begin
   Sleep(500);
 end;
 
-// .NET 8 Desktop Runtime vorhanden? (Knipser ist ein kleines Programm, das die Runtime nutzt)
-function HasDotNet8(): Boolean;
-var
-  r: TFindRec;
-begin
-  // Ordner der Desktop Runtime 8.x suchen (die Registry-Prüfung war unzuverlässig)
-  Result := False;
-  if FindFirst(ExpandConstant('{commonpf64}\dotnet\shared\Microsoft.WindowsDesktop.App\8.*'), r) then
-  try
-    Result := True;
-  finally
-    FindClose(r);
-  end;
-end;
-
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var
-  dl: TDownloadWizardPage;
-  rc: Integer;
-  f: String;
 begin
   KillKnipser();
   Result := '';
-  if HasDotNet8() then Exit;
-  if MsgBox('Knipser benötigt die kostenlose Microsoft-Komponente ".NET 8 Desktop Runtime" (ca. 55 MB). Sie fehlt auf diesem Rechner.' + #13#10 + #13#10 +
-            'Jetzt herunterladen und installieren? (Windows fragt kurz nach Administrator-Rechten.)', mbConfirmation, MB_YESNO) <> IDYES then
-  begin
-    Result := 'Ohne die .NET 8 Desktop Runtime läuft Knipser nicht. Die Installation wurde abgebrochen.';
-    Exit;
-  end;
-  dl := CreateDownloadPage('Komponente laden', '.NET 8 Desktop Runtime wird heruntergeladen …', nil);
-  dl.Clear;
-  dl.Add('https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe', 'dotnet8-desktop-runtime.exe', '');
-  dl.Show;
-  try
-    try
-      dl.Download;
-    except
-      Result := 'Der Download der .NET 8 Desktop Runtime ist fehlgeschlagen: ' + GetExceptionMessage + #13#10 + 'Bitte von https://dotnet.microsoft.com/download/dotnet/8.0 ("Desktop Runtime", x64) manuell installieren.';
-      Exit;
-    end;
-  finally
-    dl.Hide;
-  end;
-  f := ExpandConstant('{tmp}\dotnet8-desktop-runtime.exe');
-  if not ShellExec('runas', f, '/install /quiet /norestart', '', SW_SHOWNORMAL, ewWaitUntilTerminated, rc) or ((rc <> 0) and (rc <> 3010)) then
-    Result := 'Die Installation der .NET 8 Desktop Runtime ist fehlgeschlagen (Code ' + IntToStr(rc) + ').';
 end;
 
 function InitializeUninstall(): Boolean;

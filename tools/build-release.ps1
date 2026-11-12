@@ -1,4 +1,4 @@
-# Baut Knipser als Einzeldatei + Setup und legt BEIDE versioniert ab (nie überschreiben):
+﻿# Baut Knipser als Einzeldatei + Setup und legt BEIDE versioniert ab (nie überschreiben):
 #   K:\Claude Projekte\Knipser-Versionen\Knipser-<Version>.exe
 #   K:\Claude Projekte\Knipser-Versionen\Knipser-Setup-<Version>.exe
 # Vorher <Version> in Knipser.csproj hochzählen.
@@ -19,7 +19,7 @@ if ((Test-Path $exeOut) -or (Test-Path $setupOut)) { throw "Version $version exi
 
 $pub = Join-Path $root 'publish'
 if (Test-Path $pub) { Remove-Item $pub -Recurse -Force }
-& $dotnet publish (Join-Path $root 'Knipser.csproj') -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o $pub | Out-Null
+& $dotnet publish (Join-Path $root 'Knipser.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o $pub | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish fehlgeschlagen.' }
 
 Copy-Item (Join-Path $pub 'Knipser.exe') $exeOut
