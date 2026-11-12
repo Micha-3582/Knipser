@@ -122,7 +122,13 @@ public partial class EditorWindow : Window
         AddSep();
         Bar.Children.Add(new TextBlock { Text = "Stärke", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0), Foreground = Brushes.Gray });
         var slider = new Slider { Minimum = 1, Maximum = 20, Value = thick, Width = 110, VerticalAlignment = VerticalAlignment.Center, IsSnapToTickEnabled = true, TickFrequency = 1 };
-        slider.ValueChanged += (_, e) => thick = e.NewValue;
+        thickSlider = slider;
+        slider.ValueChanged += (_, e) =>
+        {
+            if (syncing) return;
+            if (selected != null && ApplyThickness(selected, e.NewValue)) { UpdateSel(); return; }
+            thick = e.NewValue;
+        };
         Bar.Children.Add(slider);
         AddSep();
         AddButton("−", (_, _) => SetZoom(Zoom.ScaleX / 1.25));
@@ -389,9 +395,41 @@ public partial class EditorWindow : Window
 
     static Point[] Corners(Rect r) => new[] { r.TopLeft, r.TopRight, r.BottomRight, r.BottomLeft };
 
+    Slider? thickSlider;
+    bool syncing;
+
+    /// <summary>Stärke eines vorhandenen Elements ändern (Linienstärke bzw. Schriftgröße). false = Element hat keine Stärke.</summary>
+    bool ApplyThickness(UIElement el, double v)
+    {
+        switch (el)
+        {
+            case Path p when p.Tag is LineInfo li:
+                p.StrokeThickness = v; p.Data = ArrowGeo(li.A, li.B, li.Arrow, v); return true;
+            case Shape s when s.Stroke != null && (s.StrokeDashArray == null || s.StrokeDashArray.Count == 0) && s is Rectangle or Ellipse or Polyline or Path:
+                s.StrokeThickness = v; return true;
+            case TextBlock tb:
+                tb.FontSize = 14 + v * 2; return true;
+        }
+        return false;
+    }
+
+    static double? ThicknessOf(UIElement el) => el switch
+    {
+        Path p when p.Tag is LineInfo => p.StrokeThickness,
+        Shape s when s.Stroke != null && (s.StrokeDashArray == null || s.StrokeDashArray.Count == 0) && s is Rectangle or Ellipse or Polyline or Path => s.StrokeThickness,
+        TextBlock tb => (tb.FontSize - 14) / 2,
+        _ => null,
+    };
+
     void Select(UIElement? el)
     {
         selected = el;
+        if (el != null && thickSlider != null && ThicknessOf(el) is double t)
+        {
+            syncing = true;
+            thickSlider.Value = Math.Clamp(Math.Round(t), 1, 20);
+            syncing = false;
+        }
         UpdateSel();
     }
 
