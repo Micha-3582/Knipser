@@ -142,22 +142,24 @@ public partial class EditorWindow : Window
 
     int ShapeOf(Tool t) => t == Tool.Soften ? settings.SoftenShape : settings.BlurShape;
 
-    void HookShapeMenu(RadioButton rb, Func<int> get, Action<int> set)
+    void HookShapeMenu(RadioButton rb, Func<int> get, Action<int> set, Func<int> getEdge, Action<int> setEdge)
     {
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        timer.Tick += (_, _) => { timer.Stop(); ShowShapeMenu(rb, get, set); };
+        timer.Tick += (_, _) => { timer.Stop(); ShowShapeMenu(rb, get, set, getEdge, setEdge); };
         rb.PreviewMouseLeftButtonDown += (_, e) =>
         {
             var pos = e.GetPosition(rb);
-            if (pos.X > rb.ActualWidth - 22 && pos.Y < 38) { ShowShapeMenu(rb, get, set); e.Handled = true; return; }
+            if (pos.X > rb.ActualWidth - 22 && pos.Y < 38) { ShowShapeMenu(rb, get, set, getEdge, setEdge); e.Handled = true; return; }
             timer.Start();
         };
         rb.PreviewMouseLeftButtonUp += (_, _) => timer.Stop();
         rb.MouseLeave += (_, _) => timer.Stop();
-        rb.MouseRightButtonUp += (_, e) => { ShowShapeMenu(rb, get, set); e.Handled = true; };
+        rb.MouseRightButtonUp += (_, e) => { ShowShapeMenu(rb, get, set, getEdge, setEdge); e.Handled = true; };
     }
 
-    void ShowShapeMenu(RadioButton target, Func<int> get, Action<int> set)
+    static readonly string[] EdgeNames = { "Harte Kante", "Weiche Kante", "Sehr weiche Kante" };
+
+    void ShowShapeMenu(RadioButton target, Func<int> get, Action<int> set, Func<int> getEdge, Action<int> setEdge)
     {
         var pop = new Popup { PlacementTarget = target, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true };
         var panel = new StackPanel();
@@ -178,6 +180,22 @@ public partial class EditorWindow : Window
             };
             panel.Children.Add(b);
         }
+        panel.Children.Add(new Border { Height = 1, Background = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)), Margin = new Thickness(4, 4, 4, 4) });
+        for (int i = 0; i < EdgeNames.Length; i++)
+        {
+            int ed = i;
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock { Text = ed == getEdge() ? "\u2713" : "", Foreground = Ink, Width = 16, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = EdgeNames[ed], Foreground = Ink, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0), MinWidth = 130 });
+            var b = new Button { Content = row, Style = (Style)FindResource("RibbonBtn"), HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(6, 3, 6, 3) };
+            b.Click += (_, _) =>
+            {
+                setEdge(ed); settings.Save();
+                target.IsChecked = true;
+                pop.IsOpen = false;
+            };
+            panel.Children.Add(b);
+        }
         pop.Child = new Border
         {
             Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), BorderThickness = new Thickness(1),
@@ -187,17 +205,20 @@ public partial class EditorWindow : Window
         pop.IsOpen = true;
     }
 
+    /// <summary>Weichheit der Kante in Pixeln (0 = hart), abhängig von der Größe der Form.</summary>
+    static double FeatherPx(Rect shapeRect, int edge) =>
+        edge <= 0 ? 0 : Math.Clamp(Math.Min(shapeRect.Width, shapeRect.Height) * (edge == 1 ? 0.12 : 0.25), 3, edge == 1 ? 30 : 70);
+
     /// <summary>Form (Ellipse oder Freihand) als Deckkraftmaske auf das Bild-Element legen; skaliert beim Größe-Ändern mit.</summary>
-    static void ApplyShapeMask(Image img, int shape, List<Point>? poly)
+    static void ApplyShapeMask(Image img, int shape, List<Point>? poly, Rect shapeRect, double feather)
     {
-        if (shape == 0) return;
-        double w = img.Width, h = img.Height;
+        if (shape == 0 && feather <= 0) return;
+        int w = (int)img.Width, h = (int)img.Height;
+        double ox = Canvas.GetLeft(img), oy = Canvas.GetTop(img);
         Geometry g;
-        if (shape == 1) g = new EllipseGeometry(new Rect(0, 0, w, h));
-        else
+        if (shape == 2)
         {
             if (poly == null || poly.Count < 3) return;
-            double ox = Canvas.GetLeft(img), oy = Canvas.GetTop(img);
             var sg = new StreamGeometry();
             using (var c = sg.Open())
             {
@@ -207,10 +228,32 @@ public partial class EditorWindow : Window
             sg.Freeze();
             g = sg;
         }
-        img.OpacityMask = new DrawingBrush(new GeometryDrawing(Brushes.Black, null, g))
+        else
         {
-            Stretch = Stretch.Fill, ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, w, h),
-        };
+            var lr = new Rect(shapeRect.X - ox, shapeRect.Y - oy, shapeRect.Width, shapeRect.Height);
+            g = shape == 1 ? new EllipseGeometry(lr) : new RectangleGeometry(lr);
+        }
+
+        if (feather <= 0)
+        {
+            img.OpacityMask = new DrawingBrush(new GeometryDrawing(Brushes.Black, null, g))
+            {
+                Stretch = Stretch.Fill, ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, w, h),
+            };
+            return;
+        }
+
+        // weiche Kante: Form als Bild zeichnen, weichzeichnen, als Deckkraftmaske benutzen
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen()) dc.DrawGeometry(Brushes.Black, null, g);
+        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        var px = new byte[w * h * 4];
+        rtb.CopyPixels(px, w * 4, 0);
+        BlurBgra(px, w, h, Math.Max(1, (int)Math.Round(feather)));
+        var mask = BitmapSource.Create(w, h, 96, 96, PixelFormats.Pbgra32, null, px, w * 4);
+        mask.Freeze();
+        img.OpacityMask = new ImageBrush(mask) { Stretch = Stretch.Fill };
     }
 
     // ---------- Pfeil-Untermenü (Ecke am Symbol, langer Druck oder Rechtsklick) ----------
@@ -381,8 +424,8 @@ public partial class EditorWindow : Window
             };
             toolButtons[t] = rb;
             if (t == Tool.Arrow) HookArrowMenu(rb);
-            if (t == Tool.Blur) HookShapeMenu(rb, () => settings.BlurShape, v => settings.BlurShape = v);
-            if (t == Tool.Soften) HookShapeMenu(rb, () => settings.SoftenShape, v => settings.SoftenShape = v);
+            if (t == Tool.Blur) HookShapeMenu(rb, () => settings.BlurShape, v => settings.BlurShape = v, () => settings.BlurEdge, v => settings.BlurEdge = v);
+            if (t == Tool.Soften) HookShapeMenu(rb, () => settings.SoftenShape, v => settings.SoftenShape = v, () => settings.SoftenEdge, v => settings.SoftenEdge = v);
             (t == Tool.Crop ? bildGroup : toolGroup).Add(rb);
         }
 
@@ -1186,6 +1229,9 @@ public partial class EditorWindow : Window
     // ---------- Verpixeln & Zuschneiden ----------
     UIElement? MakePixelate(Rect r, int shape = 0, List<Point>? poly = null)
     {
+        var shapeRect = r;
+        double feather = FeatherPx(shapeRect, settings.BlurEdge);
+        if (feather > 0) r.Inflate(feather * 2, feather * 2);
         r.Intersect(new Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight));
         if (r.Width < 3 || r.Height < 3) return null;
         var crop = new CroppedBitmap(bmp, new Int32Rect((int)r.X, (int)r.Y, (int)r.Width, (int)r.Height));
@@ -1194,13 +1240,16 @@ public partial class EditorWindow : Window
         var img = new Image { Source = small, Width = (int)r.Width, Height = (int)r.Height, Stretch = Stretch.Fill };
         RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.NearestNeighbor);
         Canvas.SetLeft(img, (int)r.X); Canvas.SetTop(img, (int)r.Y);
-        ApplyShapeMask(img, shape, poly);
+        ApplyShapeMask(img, shape, poly, shapeRect, feather);
         return img;
     }
 
     /// <summary>Weichgezeichneter Bereich (Gaußähnlich: dreifacher Boxfilter), Stärke über den Regler.</summary>
     UIElement? MakeSoften(Rect r, int shape = 0, List<Point>? poly = null)
     {
+        var shapeRect = r;
+        double feather = FeatherPx(shapeRect, settings.SoftenEdge);
+        if (feather > 0) r.Inflate(feather * 2, feather * 2);
         r.Intersect(new Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight));
         if (r.Width < 3 || r.Height < 3) return null;
         int w = (int)r.Width, h = (int)r.Height;
@@ -1214,7 +1263,7 @@ public partial class EditorWindow : Window
         res.Freeze();
         var img = new Image { Source = res, Width = w, Height = h, Stretch = Stretch.Fill };
         Canvas.SetLeft(img, (int)r.X); Canvas.SetTop(img, (int)r.Y);
-        ApplyShapeMask(img, shape, poly);
+        ApplyShapeMask(img, shape, poly, shapeRect, feather);
         return img;
     }
 

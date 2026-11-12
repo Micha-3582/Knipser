@@ -43,6 +43,9 @@ public class Settings
     /// <summary>Form für Verpixeln / Weichzeichnen: 0 Rechteck, 1 Ellipse, 2 Freihand (Lasso).</summary>
     public int BlurShape { get; set; } = 0;
     public int SoftenShape { get; set; } = 0;
+    /// <summary>Kante von Verpixeln / Weichzeichnen: 0 hart, 1 weich, 2 sehr weich.</summary>
+    public int BlurEdge { get; set; } = 0;
+    public int SoftenEdge { get; set; } = 0;
     public bool OpenEditor { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
     /// <summary>Editor schließen speichert das Bild automatisch (wie bei PicPick).</summary>
