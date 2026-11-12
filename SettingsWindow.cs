@@ -25,7 +25,6 @@ internal class SettingsWindow : Window
     readonly CheckBox cursorCb = new() { Content = "Mauszeiger im Bild mit aufnehmen" };
     readonly Slider delay = new() { Minimum = 0, Maximum = 10, Width = 130, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock delayText = new() { Width = 60, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right };
-    readonly RadioButton[] arrowRb = new RadioButton[5];
     readonly CheckBox autostart = new() { Content = "Mit Windows starten" };
     readonly TextBlock msg = new() { Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x8A, 0x65)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
 
@@ -124,26 +123,6 @@ internal class SettingsWindow : Window
         qualityText.Text = ((int)quality.Value).ToString();
         quality.ValueChanged += (_, e) => qualityText.Text = ((int)e.NewValue).ToString();
         root.Children.Add(qr);
-
-        root.Children.Add(Head("Pfeilspitze"));
-        var arrRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
-        string[] arrNames = { "Klassisch", "Spitz", "Offen", "Modern", "Punkt" };
-        for (int i = 0; i < 5; i++)
-        {
-            var prev = new System.Windows.Shapes.Path
-            {
-                Data = EditorWindow.ArrowGeo(new Point(6, 15), new Point(58, 15), true, 3, i),
-                Stroke = Brushes.White, StrokeThickness = 3, Fill = i == 2 ? null : Brushes.White,
-                StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
-                Width = 66, Height = 30,
-            };
-            var cell = new StackPanel { Margin = new Thickness(0, 0, 4, 0) };
-            cell.Children.Add(prev);
-            cell.Children.Add(new TextBlock { Text = arrNames[i], FontSize = 11, Foreground = Brushes.Gray, HorizontalAlignment = HorizontalAlignment.Center });
-            arrowRb[i] = new RadioButton { Content = cell, GroupName = "arrow", VerticalContentAlignment = VerticalAlignment.Center, ToolTip = arrNames[i], Margin = new Thickness(0, 0, 12, 0), Foreground = Foreground, IsChecked = s.ArrowStyle == i };
-            arrRow.Children.Add(arrowRb[i]);
-        }
-        root.Children.Add(arrRow);
 
         root.Children.Add(Head("Verhalten"));
         var dr = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
@@ -297,7 +276,6 @@ internal class SettingsWindow : Window
         s.ImageFormat = png.IsChecked == true ? "png" : "jpg";
         s.JpgQuality = (int)quality.Value;
         s.CheckUpdates = checkUpd.IsChecked == true;
-        for (int i = 0; i < arrowRb.Length; i++) if (arrowRb[i].IsChecked == true) s.ArrowStyle = i;
         s.CaptureDelay = (int)delay.Value;
         s.IncludeCursor = cursorCb.IsChecked == true;
         s.OpenEditor = openEditor.IsChecked == true;

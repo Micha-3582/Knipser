@@ -128,6 +128,7 @@ public partial class EditorWindow : Window
     // ---------- Pfeil-Untermenü (Ecke am Symbol, langer Druck oder Rechtsklick) ----------
     Path? arrowPrev;
     static readonly string[] ArrowNames = { "Klassisch", "Spitz", "Offen", "Modern", "Punkt" };
+    static readonly int[] ArrowOrder = { 3, 0, 1, 2, 4 };   // Reihenfolge im Menü: Modern, Klassisch, Spitz, Offen, Punkt
 
     UIElement BuildArrowIcon()
     {
@@ -170,9 +171,9 @@ public partial class EditorWindow : Window
     {
         var pop = new Popup { PlacementTarget = target, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true };
         var panel = new StackPanel();
-        for (int i = 0; i < ArrowNames.Length; i++)
+        foreach (int st in ArrowOrder)
         {
-            int st = i;
+            int i = st;
             var row = new StackPanel { Orientation = Orientation.Horizontal };
             row.Children.Add(new TextBlock { Text = st == settings.ArrowStyle ? "✓" : "", Foreground = Ink, Width = 16, VerticalAlignment = VerticalAlignment.Center });
             row.Children.Add(new Path
