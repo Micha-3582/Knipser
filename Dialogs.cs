@@ -117,3 +117,78 @@ internal class BrightnessDialog : DarkDialog
         cs.ValueChanged += (_, _) => Upd();
     }
 }
+
+/// <summary>Bildrahmen: Breite und Farbe wählen.</summary>
+internal class FrameDialog : DarkDialog
+{
+    public int FrameWidth => (int)ws.Value;
+    public Color FrameColor { get; private set; }
+    readonly Slider ws = new() { Minimum = 1, Maximum = 100, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
+    readonly TextBox hex = Field(90);
+    readonly System.Collections.Generic.List<Border> swatches = new();
+    bool busy;
+
+    static readonly string[] Palette = { "#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#000000", "#FFFFFF", "#9E9E9E", "#37474F" };
+
+    public FrameDialog(int width, Color color) : base("Rahmen um das Bild")
+    {
+        FrameColor = color;
+        ws.Value = Math.Clamp(width, 1, 100);
+        var wt = new TextBlock { Width = 50, Text = $"{(int)ws.Value} px", TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+        var r1 = new StackPanel { Orientation = Orientation.Horizontal }; r1.Children.Add(ws); r1.Children.Add(wt);
+        Body.Children.Add(Line("Breite", r1));
+        ws.ValueChanged += (_, _) => wt.Text = $"{(int)ws.Value} px";
+
+        var sw = new WrapPanel { Width = 230 };
+        foreach (var h in Palette)
+        {
+            var c = (Color)ColorConverter.ConvertFromString(h);
+            var b = new Border
+            {
+                Width = 24, Height = 24, Margin = new Thickness(3), CornerRadius = new CornerRadius(12), Background = new SolidColorBrush(c),
+                BorderThickness = new Thickness(2), Cursor = System.Windows.Input.Cursors.Hand, ToolTip = h, Tag = c,
+            };
+            b.MouseLeftButtonDown += (_, _) => Pick(c);
+            swatches.Add(b); sw.Children.Add(b);
+        }
+        Body.Children.Add(Line("Farbe", sw));
+        Body.Children.Add(Line("Farbcode", hex));
+        hex.TextChanged += (_, _) =>
+        {
+            if (busy) return;
+            try { var c = (Color)ColorConverter.ConvertFromString(hex.Text.Trim()); busy = true; Pick(c, false); busy = false; } catch { }
+        };
+        Pick(color);
+    }
+
+    void Pick(Color c, bool setHex = true)
+    {
+        FrameColor = c;
+        foreach (var b in swatches) b.BorderBrush = (Color)b.Tag == c ? Brushes.White : Brushes.Transparent;
+        if (setHex) { busy = true; hex.Text = $"#{c.R:X2}{c.G:X2}{c.B:X2}"; busy = false; }
+    }
+}
+
+/// <summary>Schlagschatten um das Bild: Abstand, Weichheit und Deckkraft.</summary>
+internal class ShadowDialog : DarkDialog
+{
+    public int Offset => (int)os.Value;
+    public int Blur => (int)bs.Value;
+    public int Opacity => (int)ps.Value;
+    readonly Slider os = new() { Minimum = 0, Maximum = 30, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
+    readonly Slider bs = new() { Minimum = 1, Maximum = 30, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
+    readonly Slider ps = new() { Minimum = 10, Maximum = 100, Width = 200, IsSnapToTickEnabled = true, TickFrequency = 1 };
+
+    public ShadowDialog(int offset, int blur, int opacity) : base("Schlagschatten um das Bild")
+    {
+        os.Value = Math.Clamp(offset, 0, 30); bs.Value = Math.Clamp(blur, 1, 30); ps.Value = Math.Clamp(opacity, 10, 100);
+        void Row(string label, Slider s, string unit)
+        {
+            var t = new TextBlock { Width = 50, Text = $"{(int)s.Value}{unit}", TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+            var r = new StackPanel { Orientation = Orientation.Horizontal }; r.Children.Add(s); r.Children.Add(t);
+            s.ValueChanged += (_, _) => t.Text = $"{(int)s.Value}{unit}";
+            Body.Children.Add(Line(label, r));
+        }
+        Row("Abstand", os, " px"); Row("Weichheit", bs, " px"); Row("Deckkraft", ps, " %");
+    }
+}

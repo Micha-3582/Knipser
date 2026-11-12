@@ -308,8 +308,8 @@ public partial class EditorWindow : Window
             BigBtn(Geo("M4,4 H20 V20 H4 Z M12,4 V20 M4,12 H12"), "Invertieren", (_, _) => ApplyPixelEffect(InvertFx), "Farben umkehren"),
             BigBtn(Geo("M12,4 L20,20 H4 Z M12,10 V15"), "Schärfen", (_, _) => ApplyPixelEffect(SharpenFx), "Bild schärfen")));
         panels["Bild"].Children.Add(Group("Effekte",
-            BigBtn(Geo("M5,5 H19 V19 H5 Z M9,9 H15 V15 H9 Z"), "Rahmen", (_, _) => ApplyImageFrame(), "Rahmen um das ganze Bild (Farbe und Breite wie gewählt)"),
-            BigBtn(Geo("M4,4 H15 V15 H4 Z M18,7 V18 H7"), "Schatten", (_, _) => ApplyImageShadow(), "Schlagschatten um das ganze Bild (Rand mit weichem Schatten)"),
+            BigBtn(Geo("M5,5 H19 V19 H5 Z M9,9 H15 V15 H9 Z"), "Rahmen", (_, _) => ApplyImageFrame(), "Rahmen um das ganze Bild (Breite und Farbe wählbar)"),
+            BigBtn(Geo("M4,4 H15 V15 H4 Z M18,7 V18 H7"), "Schatten", (_, _) => ApplyImageShadow(), "Schlagschatten um das ganze Bild (Abstand, Weichheit und Deckkraft wählbar)"),
             BigBtn(Geo("M12,4 A8,8 0 1 0 12,20 A8,8 0 1 0 12,4 Z M12,4 V20"), "Graustufen", (_, _) => ApplyGrayscale(), "Bild in Graustufen umwandeln")));
         panels["Bild"].Children.Add(Group("Element",
             BigBtn(Geo("M5,5 H15 V15 H5 Z M18,8 V18 H8"), "Schatten ein/aus", (_, _) => ToggleElementShadow(), "Schlagschatten für das ausgewählte Element ein- oder ausschalten")));
@@ -1138,7 +1138,16 @@ public partial class EditorWindow : Window
     {
         CommitText();
         Select(null);
-        const int m = 28, dx = 6, dy = 8, rad = 7;
+        var dlg = new ShadowDialog(settings.ShadowOffset, settings.ShadowBlur, settings.ShadowOpacity) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        settings.ShadowOffset = dlg.Offset; settings.ShadowBlur = dlg.Blur; settings.ShadowOpacity = dlg.Opacity;
+        settings.Save();
+        DoImageShadow(dlg.Offset, dlg.Blur, dlg.Opacity / 100.0);
+    }
+
+    void DoImageShadow(int offset, int rad, double opacity)
+    {
+        int dx = offset, dy = (int)Math.Round(offset * 1.3), m = rad * 3 + offset + 4;
         var old = bmp;
         int iw = old.PixelWidth, ih = old.PixelHeight, W = iw + 2 * m, H = ih + 2 * m;
         bool transparent = settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
@@ -1156,7 +1165,7 @@ public partial class EditorWindow : Window
         var outp = new byte[W * H * 4];
         for (int i = 0; i < W * H; i++)
         {
-            double a = mask[i * 4 + 3] / 255.0 * 0.5;
+            double a = mask[i * 4 + 3] / 255.0 * opacity;
             int o = i * 4;
             if (transparent) { outp[o] = outp[o + 1] = outp[o + 2] = 0; outp[o + 3] = (byte)(a * 255 + 0.5); }
             else { byte v = (byte)(255 * (1 - a) + 0.5); outp[o] = outp[o + 1] = outp[o + 2] = v; outp[o + 3] = 255; }
@@ -1179,8 +1188,19 @@ public partial class EditorWindow : Window
     {
         CommitText();
         Select(null);
+        Color start;
+        try { start = (Color)ColorConverter.ConvertFromString(settings.FrameColor); } catch { start = Color.FromRgb(0xE5, 0x39, 0x35); }
+        var dlg = new FrameDialog(settings.FrameWidth, start) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        settings.FrameWidth = dlg.FrameWidth;
+        settings.FrameColor = $"#{dlg.FrameColor.R:X2}{dlg.FrameColor.G:X2}{dlg.FrameColor.B:X2}";
+        settings.Save();
+        DoImageFrame(dlg.FrameWidth, dlg.FrameColor);
+    }
+
+    void DoImageFrame(int b, Color color)
+    {
         var old = bmp;
-        int b = (int)Math.Max(2, Math.Round(thick));
         int iw = old.PixelWidth, ih = old.PixelHeight, W = iw + 2 * b, H = ih + 2 * b;
         var img = new FormatConvertedBitmap(old, PixelFormats.Bgra32, null, 0);
         var ip = new byte[iw * ih * 4];

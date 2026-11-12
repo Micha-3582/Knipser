@@ -31,6 +31,13 @@ public class Settings
     public string FileNamePattern { get; set; } = "Knipser_{yyyy-MM-dd_HH-mm-ss}";
     /// <summary>Farbpipette kopiert: hex, rgb oder cpp.</summary>
     public string ColorFormat { get; set; } = "hex";
+    /// <summary>Zuletzt gewählter Bildrahmen (Reiter Bild).</summary>
+    public int FrameWidth { get; set; } = 6;
+    public string FrameColor { get; set; } = "#E53935";
+    /// <summary>Zuletzt gewählter Bild-Schatten.</summary>
+    public int ShadowOffset { get; set; } = 6;
+    public int ShadowBlur { get; set; } = 7;
+    public int ShadowOpacity { get; set; } = 50;
     public bool OpenEditor { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
     /// <summary>Editor schließen speichert das Bild automatisch (wie bei PicPick).</summary>
