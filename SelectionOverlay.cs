@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -25,10 +26,17 @@ internal class SelectionOverlay : Window
     Rect sel;
 
     public Int32Rect? Result { get; private set; }
+    /// <summary>Freihand-Auswahl: Umriss in Bildschirm-Pixeln (relativ zum Screenshot).</summary>
+    public List<Point>? FreePoints { get; private set; }
+    readonly Size? fixedPx;
+    readonly bool freehand;
+    readonly Polyline freeLine = new() { Stroke = Brushes.White, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 4, 3 }, IsHitTestVisible = false };
+    readonly List<Point> free = new();
 
-    public SelectionOverlay(BitmapSource shot, Drawing.Rectangle virtualScreen)
+    public SelectionOverlay(BitmapSource shot, Drawing.Rectangle virtualScreen, Size? fixedPixelSize = null, bool freehand = false)
     {
         this.shot = shot;
+        fixedPx = fixedPixelSize; this.freehand = freehand;
         vs = virtualScreen;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
@@ -44,6 +52,7 @@ internal class SelectionOverlay : Window
         cv.Children.Add(dim);
         cv.Children.Add(border);
         cv.Children.Add(label);
+        cv.Children.Add(freeLine);
         var grid = new Grid();
         grid.Children.Add(img);
         grid.Children.Add(cv);
@@ -70,13 +79,22 @@ internal class SelectionOverlay : Window
     {
         double w = cv.ActualWidth, h = cv.ActualHeight;
         Geometry full = new RectangleGeometry(new Rect(0, 0, w, h));
-        dim.Data = start.HasValue && sel.Width > 0 && sel.Height > 0
+        dim.Data = (start.HasValue || fixedPx.HasValue) && !freehand && sel.Width > 0 && sel.Height > 0
             ? new CombinedGeometry(GeometryCombineMode.Exclude, full, new RectangleGeometry(sel))
             : full;
     }
 
     void OnDown(object s, MouseButtonEventArgs e)
     {
+        if (fixedPx.HasValue) { MoveFixed(e.GetPosition(cv)); FinishSel(); return; }
+        if (freehand)
+        {
+            start = e.GetPosition(cv);
+            free.Clear(); free.Add(start.Value);
+            freeLine.Points = new PointCollection(free);
+            CaptureMouse();
+            return;
+        }
         start = e.GetPosition(cv);
         sel = new Rect(start.Value, new Size(0, 0));
         CaptureMouse();
@@ -142,9 +160,43 @@ internal class SelectionOverlay : Window
         UpdateLoupe(lastPos);
     }
 
+    void MoveFixed(Point p)
+    {
+        double kx = shot.PixelWidth / cv.ActualWidth, ky = shot.PixelHeight / cv.ActualHeight;
+        double w = Math.Min(fixedPx!.Value.Width / kx, cv.ActualWidth), h = Math.Min(fixedPx.Value.Height / ky, cv.ActualHeight);
+        double x = Math.Clamp(p.X - w / 2, 0, cv.ActualWidth - w), y = Math.Clamp(p.Y - h / 2, 0, cv.ActualHeight - h);
+        sel = new Rect(x, y, w, h);
+        Canvas.SetLeft(border, sel.X); Canvas.SetTop(border, sel.Y);
+        border.Width = sel.Width; border.Height = sel.Height; border.Visibility = Visibility.Visible;
+        labelText.Text = $"{Math.Round(sel.Width * kx)} × {Math.Round(sel.Height * ky)}";
+        label.Visibility = Visibility.Visible;
+        label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double ly = sel.Y - label.DesiredSize.Height - 4;
+        if (ly < 0) ly = sel.Y + 4;
+        Canvas.SetLeft(label, sel.X); Canvas.SetTop(label, ly);
+        UpdateDim();
+    }
+
+    void FinishSel()
+    {
+        double kx = shot.PixelWidth / cv.ActualWidth, ky = shot.PixelHeight / cv.ActualHeight;
+        int x = (int)Math.Round(sel.X * kx), y = (int)Math.Round(sel.Y * ky);
+        int w = (int)Math.Round(sel.Width * kx), h = (int)Math.Round(sel.Height * ky);
+        x = Math.Max(0, x); y = Math.Max(0, y);
+        w = Math.Min(w, shot.PixelWidth - x); h = Math.Min(h, shot.PixelHeight - y);
+        if (w >= 3 && h >= 3) Result = new Int32Rect(x, y, w, h);
+        Close();
+    }
+
     void OnMove(object s, MouseEventArgs e)
     {
         UpdateLoupe(e.GetPosition(cv));
+        if (fixedPx.HasValue) { MoveFixed(e.GetPosition(cv)); return; }
+        if (freehand)
+        {
+            if (start.HasValue) { free.Add(e.GetPosition(cv)); freeLine.Points = new PointCollection(free); }
+            return;
+        }
         if (!start.HasValue) return;
         var p = e.GetPosition(cv);
         sel = new Rect(start.Value, p);
@@ -164,6 +216,23 @@ internal class SelectionOverlay : Window
     void OnUp(object s, MouseButtonEventArgs e)
     {
         ReleaseMouseCapture();
+        if (fixedPx.HasValue) return;
+        if (freehand)
+        {
+            if (start.HasValue && free.Count >= 3)
+            {
+                double fx = shot.PixelWidth / cv.ActualWidth, fy = shot.PixelHeight / cv.ActualHeight;
+                var px = new List<Point>();
+                foreach (var q in free) px.Add(new Point(Math.Clamp(q.X * fx, 0, shot.PixelWidth), Math.Clamp(q.Y * fy, 0, shot.PixelHeight)));
+                double minX = double.MaxValue, minY = double.MaxValue, maxX = 0, maxY = 0;
+                foreach (var q in px) { minX = Math.Min(minX, q.X); minY = Math.Min(minY, q.Y); maxX = Math.Max(maxX, q.X); maxY = Math.Max(maxY, q.Y); }
+                int rx = (int)Math.Floor(minX), ry = (int)Math.Floor(minY);
+                int rw = Math.Min((int)Math.Ceiling(maxX) - rx, shot.PixelWidth - rx), rh = Math.Min((int)Math.Ceiling(maxY) - ry, shot.PixelHeight - ry);
+                if (rw >= 3 && rh >= 3) { Result = new Int32Rect(rx, ry, rw, rh); FreePoints = px; }
+            }
+            Close();
+            return;
+        }
         if (!start.HasValue) return;
         double kx = shot.PixelWidth / cv.ActualWidth, ky = shot.PixelHeight / cv.ActualHeight;
         int x = (int)Math.Round(sel.X * kx), y = (int)Math.Round(sel.Y * ky);

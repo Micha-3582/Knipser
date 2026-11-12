@@ -250,7 +250,8 @@ public partial class EditorWindow : Window
             BigBtn(Glyph("\uE792"), "Speichern unter", (_, _) => SaveAs(), "Speichern unter…"),
             fmtBox));
         panels["Datei"].Children.Add(Group("Zwischenablage",
-            BigBtn(Glyph("\uE8C8"), "Kopieren", (_, _) => CopyToClipboard())));
+            BigBtn(Glyph("\uE8C8"), "Kopieren", (_, _) => CopyToClipboard()),
+            BigBtn(Glyph("\uE749"), "Drucken", (_, _) => PrintImage())));
         panels["Datei"].Children.Add(Group("Programm",
             BigBtn(Glyph("\uE713"), "Einstellungen", (_, _) => ((App)Application.Current).ShowSettings())));
 
@@ -296,10 +297,22 @@ public partial class EditorWindow : Window
         }
 
         panels["Start"].Children.Add(Group("Bild", bildGroup.ToArray()));
+        panels["Bild"].Children.Add(Group("Größe",
+            BigBtn(Geo("M5,19 L19,5 M19,5 H12 M19,5 V12 M5,19 H12 M5,19 V12"), "Größe", (_, _) => ResizeImage(), "Bildgröße ändern"),
+            BigBtn(Geo("M6,12 A7,7 0 1 1 12,19 M6,12 L3,9 M6,12 L9,9"), "Links", (_, _) => RotateImage(270), "90° nach links drehen"),
+            BigBtn(Geo("M18,12 A7,7 0 1 0 12,19 M18,12 L21,9 M18,12 L15,9"), "Rechts", (_, _) => RotateImage(90), "90° nach rechts drehen"),
+            BigBtn(Geo("M12,3 V21 M8,7 L3,12 L8,17 Z M16,7 L21,12 L16,17 Z"), "Spiegeln ↔", (_, _) => FlipImage(true), "Horizontal kippen"),
+            BigBtn(Geo("M3,12 H21 M7,8 L12,3 L17,8 Z M7,16 L12,21 L17,16 Z"), "Spiegeln ↕", (_, _) => FlipImage(false), "Vertikal kippen")));
+        panels["Bild"].Children.Add(Group("Anpassen",
+            BigBtn(Geo("M12,4 A8,8 0 1 0 12,20 A8,8 0 1 0 12,4 Z M12,4 V20 M12,4 A8,8 0 0 1 12,20 Z", true), "Hell/Kontrast", (_, _) => BrightnessContrast(), "Helligkeit und Kontrast"),
+            BigBtn(Geo("M4,4 H20 V20 H4 Z M12,4 V20 M4,12 H12"), "Invertieren", (_, _) => ApplyPixelEffect(InvertFx), "Farben umkehren"),
+            BigBtn(Geo("M12,4 L20,20 H4 Z M12,10 V15"), "Schärfen", (_, _) => ApplyPixelEffect(SharpenFx), "Bild schärfen")));
         panels["Bild"].Children.Add(Group("Effekte",
             BigBtn(Geo("M5,5 H19 V19 H5 Z M9,9 H15 V15 H9 Z"), "Rahmen", (_, _) => ApplyImageFrame(), "Rahmen um das ganze Bild (Farbe und Breite wie gewählt)"),
             BigBtn(Geo("M4,4 H15 V15 H4 Z M18,7 V18 H7"), "Schatten", (_, _) => ApplyImageShadow(), "Schlagschatten um das ganze Bild (Rand mit weichem Schatten)"),
             BigBtn(Geo("M12,4 A8,8 0 1 0 12,20 A8,8 0 1 0 12,4 Z M12,4 V20"), "Graustufen", (_, _) => ApplyGrayscale(), "Bild in Graustufen umwandeln")));
+        panels["Bild"].Children.Add(Group("Element",
+            BigBtn(Geo("M5,5 H15 V15 H5 Z M18,8 V18 H8"), "Schatten ein/aus", (_, _) => ToggleElementShadow(), "Schlagschatten für das ausgewählte Element ein- oder ausschalten")));
         panels["Start"].Children.Add(Group("Werkzeuge", toolGroup.ToArray()));
 
         panels["Start"].Children.Add(Group("Anordnen",
@@ -1213,6 +1226,135 @@ public partial class EditorWindow : Window
         RefreshSel();
     }
 
+    // ---------- Größe, Drehen, Kippen (Markierungen werden dabei ins Bild eingerechnet) ----------
+    void ApplyFlatTransform(Func<BitmapSource, BitmapSource> f)
+    {
+        CommitText();
+        Select(null);
+        var oldBmp = bmp;
+        var oldEls = new List<UIElement>();
+        foreach (UIElement c in Art.Children) if (!ReferenceEquals(c, baseImg)) oldEls.Add(c);
+        var nb = f(Render());
+        if (nb.CanFreeze) nb.Freeze();
+        Action doIt = () => { foreach (var el in oldEls) Art.Children.Remove(el); SetBitmap(nb); };
+        Action undo = () => { SetBitmap(oldBmp); foreach (var el in oldEls) if (!Art.Children.Contains(el)) Art.Children.Add(el); };
+        doIt();
+        Push(undo, doIt);
+        RefreshSel();
+        FitZoom();
+    }
+
+    void ResizeImage()
+    {
+        var dlg = new ResizeDialog(bmp.PixelWidth, bmp.PixelHeight) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        int nw = dlg.NewWidth, nh = dlg.NewHeight;
+        if (nw == bmp.PixelWidth && nh == bmp.PixelHeight) return;
+        ApplyFlatTransform(src =>
+        {
+            var dv = new DrawingVisual();
+            RenderOptions.SetBitmapScalingMode(dv, BitmapScalingMode.HighQuality);
+            using (var dc = dv.RenderOpen()) dc.DrawImage(src, new Rect(0, 0, nw, nh));
+            var rtb = new RenderTargetBitmap(nw, nh, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(dv);
+            return rtb;
+        });
+    }
+
+    void RotateImage(int deg) => ApplyFlatTransform(src => new TransformedBitmap(src, new RotateTransform(deg)));
+    void FlipImage(bool horizontal) => ApplyFlatTransform(src => new TransformedBitmap(src, horizontal ? new ScaleTransform(-1, 1) : new ScaleTransform(1, -1)));
+
+    // ---------- Farbanpassungen ----------
+    static BitmapSource PixelEffect(BitmapSource src, Action<byte[], int, int> fx)
+    {
+        int w = src.PixelWidth, h = src.PixelHeight;
+        var conv = new FormatConvertedBitmap(src, PixelFormats.Bgra32, null, 0);
+        var px = new byte[w * h * 4];
+        conv.CopyPixels(px, w * 4, 0);
+        fx(px, w, h);
+        var nb = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, w * 4);
+        nb.Freeze();
+        return nb;
+    }
+
+    void ApplyPixelEffect(Action<byte[], int, int> fx)
+    {
+        CommitText();
+        Select(null);
+        var old = bmp;
+        var nb = PixelEffect(old, fx);
+        Action doIt = () => SetBitmap(nb);
+        Action undo = () => SetBitmap(old);
+        doIt();
+        Push(undo, doIt);
+        RefreshSel();
+    }
+
+    static void InvertFx(byte[] px, int w, int h)
+    {
+        for (int i = 0; i < px.Length; i += 4) { px[i] = (byte)(255 - px[i]); px[i + 1] = (byte)(255 - px[i + 1]); px[i + 2] = (byte)(255 - px[i + 2]); }
+    }
+
+    static void SharpenFx(byte[] px, int w, int h)
+    {
+        var blur = (byte[])px.Clone();
+        BlurBgra(blur, w, h, 2);
+        for (int i = 0; i < px.Length; i += 4)
+            for (int c = 0; c < 3; c++)
+                px[i + c] = (byte)Math.Clamp(px[i + c] + 1.2 * (px[i + c] - blur[i + c]) + 0.5, 0, 255);
+    }
+
+    static Action<byte[], int, int> BrightnessFx(int brightness, int contrast)
+    {
+        double c = contrast * 2.55, f = (259 * (c + 255)) / (255 * (259 - c)), b = brightness * 2.55;
+        return (px, w, h) =>
+        {
+            for (int i = 0; i < px.Length; i += 4)
+                for (int k = 0; k < 3; k++)
+                    px[i + k] = (byte)Math.Clamp(f * (px[i + k] - 128) + 128 + b + 0.5, 0, 255);
+        };
+    }
+
+    void BrightnessContrast()
+    {
+        CommitText();
+        Select(null);
+        var dlg = new BrightnessDialog((b, c) => baseImg.Source = PixelEffect(bmp, BrightnessFx(b, c))) { Owner = this };
+        bool ok = dlg.ShowDialog() == true;
+        baseImg.Source = bmp;                      // Vorschau zurücknehmen
+        if (ok && (dlg.Brightness != 0 || dlg.Contrast != 0)) ApplyPixelEffect(BrightnessFx(dlg.Brightness, dlg.Contrast));
+    }
+
+    // ---------- Schatten für das ausgewählte Element ----------
+    void ToggleElementShadow()
+    {
+        var el = selected;
+        if (el == null) { Status.Text = "Erst ein Element mit dem Auswahl-Werkzeug anklicken."; return; }
+        var old = el.Effect;
+        bool has = old is System.Windows.Media.Effects.DropShadowEffect;
+        Action doIt = () => el.Effect = has ? null : new System.Windows.Media.Effects.DropShadowEffect { ShadowDepth = 4, BlurRadius = 8, Opacity = 0.6, Color = Colors.Black, Direction = 315 };
+        Action undo = () => el.Effect = old;
+        doIt();
+        Push(undo, doIt);
+        UpdateSel();
+    }
+
+    // ---------- Drucken ----------
+    void PrintImage()
+    {
+        try
+        {
+            var pd = new PrintDialog();
+            if (pd.ShowDialog() != true) return;
+            var img = new Image { Source = Render(), Stretch = Stretch.Uniform, Width = pd.PrintableAreaWidth, Height = pd.PrintableAreaHeight };
+            img.Measure(new Size(pd.PrintableAreaWidth, pd.PrintableAreaHeight));
+            img.Arrange(new Rect(0, 0, pd.PrintableAreaWidth, pd.PrintableAreaHeight));
+            pd.PrintVisual(img, "Knipser");
+            Status.Text = "An den Drucker gesendet.";
+        }
+        catch (Exception ex) { Status.Text = "Drucken fehlgeschlagen: " + ex.Message; }
+    }
+
     void ApplyCrop(Rect r)
     {
         r.Intersect(new Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight));
@@ -1432,6 +1574,7 @@ public partial class EditorWindow : Window
         {
             ".jpg" or ".jpeg" => new JpegBitmapEncoder { QualityLevel = Math.Clamp(settings.JpgQuality, 1, 100) },
             ".bmp" => new BmpBitmapEncoder(),
+            ".gif" => new GifBitmapEncoder(),
             _ => new PngBitmapEncoder(),
         };
     }
@@ -1453,7 +1596,7 @@ public partial class EditorWindow : Window
         try
         {
             Directory.CreateDirectory(settings.SaveFolder);
-            SaveTo(System.IO.Path.Combine(settings.SaveFolder, $"Knipser_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.{Ext}"));
+            SaveTo(settings.UniquePath(Ext));
         }
         catch (Exception ex) { Status.Text = "Fehler beim Speichern: " + ex.Message; }
     }
@@ -1462,9 +1605,9 @@ public partial class EditorWindow : Window
     {
         var dlg = new SaveFileDialog
         {
-            Filter = "JPEG (*.jpg)|*.jpg|PNG (*.png)|*.png|Bitmap (*.bmp)|*.bmp",
+            Filter = "JPEG (*.jpg)|*.jpg|PNG (*.png)|*.png|Bitmap (*.bmp)|*.bmp|GIF (*.gif)|*.gif",
             FilterIndex = Ext == "png" ? 2 : 1,
-            FileName = $"Knipser_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}",
+            FileName = settings.MakeFileName(),
             DefaultExt = "." + Ext,
         };
         try { Directory.CreateDirectory(settings.SaveFolder); dlg.InitialDirectory = settings.SaveFolder; } catch { }

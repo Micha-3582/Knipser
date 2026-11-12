@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Knipser;
 
@@ -20,6 +21,16 @@ public class Settings
     public bool IncludeCursor { get; set; } = false;
     /// <summary>Pfeilspitze im Editor: 0 Klassisch, 1 Spitz, 2 Offen, 3 Modern (Standard), 4 Punkt.</summary>
     public int ArrowStyle { get; set; } = 3;
+    /// <summary>Fester Bereich: Größe in Pixeln.</summary>
+    public int FixedWidth { get; set; } = 800;
+    public int FixedHeight { get; set; } = 600;
+    public string HotkeyFixed { get; set; } = "";
+    public string HotkeyRepeat { get; set; } = "";
+    public string HotkeyFreehand { get; set; } = "";
+    /// <summary>Dateiname ohne Endung; Datum/Uhrzeit in geschweiften Klammern, z. B. Knipser_{yyyy-MM-dd_HH-mm-ss}.</summary>
+    public string FileNamePattern { get; set; } = "Knipser_{yyyy-MM-dd_HH-mm-ss}";
+    /// <summary>Farbpipette kopiert: hex, rgb oder cpp.</summary>
+    public string ColorFormat { get; set; } = "hex";
     public bool OpenEditor { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
     /// <summary>Editor schließen speichert das Bild automatisch (wie bei PicPick).</summary>
@@ -31,6 +42,28 @@ public class Settings
     public string HotkeyPicker { get; set; } = "Ctrl+Shift+F10";
     public string HotkeyMagnifier { get; set; } = "Ctrl+Shift+F11";
     public string HotkeyRuler { get; set; } = "Ctrl+Shift+F12";
+
+    /// <summary>Dateiname (ohne Endung) aus dem Muster, ungültige Zeichen entfernt.</summary>
+    public string MakeFileName()
+    {
+        var pat = string.IsNullOrWhiteSpace(FileNamePattern) ? "Knipser_{yyyy-MM-dd_HH-mm-ss}" : FileNamePattern;
+        var name = Regex.Replace(pat, @"\{([^{}]+)\}", m =>
+        {
+            try { return DateTime.Now.ToString(m.Groups[1].Value); } catch { return m.Value; }
+        });
+        foreach (var c in Path.GetInvalidFileNameChars()) name = name.Replace(c.ToString(), "");
+        name = name.Trim().TrimEnd('.');
+        return name.Length == 0 ? "Knipser" : name;
+    }
+
+    /// <summary>Freien Dateipfad im Speicherordner (hängt bei Bedarf _2, _3 … an).</summary>
+    public string UniquePath(string ext)
+    {
+        var baseName = MakeFileName();
+        var p = Path.Combine(SaveFolder, baseName + "." + ext);
+        for (int i = 2; File.Exists(p); i++) p = Path.Combine(SaveFolder, $"{baseName}_{i}.{ext}");
+        return p;
+    }
 
     static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Knipser", "settings.json");

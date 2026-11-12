@@ -53,6 +53,9 @@ public partial class App : Application
         Register(5, Settings.HotkeyPicker, () => PixelTool(PixelMode.Picker), failed);
         Register(6, Settings.HotkeyMagnifier, () => PixelTool(PixelMode.Magnifier), failed);
         Register(7, Settings.HotkeyRuler, () => PixelTool(PixelMode.Ruler), failed);
+        Register(8, Settings.HotkeyFixed, CaptureFixed, failed);
+        Register(9, Settings.HotkeyRepeat, CaptureRepeat, failed);
+        Register(10, Settings.HotkeyFreehand, CaptureFreehand, failed);
         return failed;
     }
 
@@ -152,6 +155,9 @@ public partial class App : Application
         menu.Items.Add("Bereich aufnehmen", null, (_, _) => CaptureRegion());
         menu.Items.Add("Vollbild aufnehmen", null, (_, _) => CaptureFullscreen());
         menu.Items.Add("Fenster unter Mauszeiger", null, (_, _) => CaptureWindow());
+        menu.Items.Add("Fester Bereich", null, (_, _) => CaptureFixed());
+        menu.Items.Add("Freihand-Auswahl", null, (_, _) => CaptureFreehand());
+        menu.Items.Add("Letzten Bereich wiederholen", null, (_, _) => CaptureRepeat());
         menu.Items.Add("Scrollende Aufnahme", null, (_, _) => CaptureScroll());
         menu.Items.Add("Farbpipette", null, (_, _) => PixelTool(PixelMode.Picker));
         menu.Items.Add("Lupe", null, (_, _) => PixelTool(PixelMode.Magnifier));
@@ -246,12 +252,105 @@ public partial class App : Application
             ov.ShowDialog();
             if (ov.Result is Int32Rect r)
             {
+                lastRegion = new Rectangle(vs.X + r.X, vs.Y + r.Y, r.Width, r.Height);
                 var crop = new CroppedBitmap(shot, r);
                 crop.Freeze();
                 Finish(crop);
             }
         }
         finally { busy = false; }
+    }
+
+    Rectangle? lastRegion;
+
+    async void CaptureFixed()
+    {
+        if (busy) return;
+        busy = true;
+        try
+        {
+            await Delay();
+            var vs = Capture.VirtualScreen;
+            var shot = Capture.Grab(vs, Settings.IncludeCursor);
+            var ov = new SelectionOverlay(shot, vs, new System.Windows.Size(Math.Max(10, Settings.FixedWidth), Math.Max(10, Settings.FixedHeight)));
+            ov.ShowDialog();
+            if (ov.Result is Int32Rect r)
+            {
+                lastRegion = new Rectangle(vs.X + r.X, vs.Y + r.Y, r.Width, r.Height);
+                var crop = new CroppedBitmap(shot, r);
+                crop.Freeze();
+                Finish(crop);
+            }
+        }
+        finally { busy = false; }
+    }
+
+    async void CaptureRepeat()
+    {
+        if (busy) return;
+        if (lastRegion is not Rectangle rect)
+        {
+            tray?.ShowBalloonTip(2500, "Knipser", "Es wurde noch kein Bereich aufgenommen.", Forms.ToolTipIcon.Info);
+            return;
+        }
+        busy = true;
+        try { await Delay(); Finish(Capture.Grab(rect, Settings.IncludeCursor)); }
+        finally { busy = false; }
+    }
+
+    async void CaptureFreehand()
+    {
+        if (busy) return;
+        busy = true;
+        try
+        {
+            await Delay();
+            var vs = Capture.VirtualScreen;
+            var shot = Capture.Grab(vs, Settings.IncludeCursor);
+            var ov = new SelectionOverlay(shot, vs, null, true);
+            ov.ShowDialog();
+            if (ov.Result is Int32Rect r && ov.FreePoints is { } pts)
+            {
+                var crop = new CroppedBitmap(shot, r);
+                var geo = new System.Windows.Media.StreamGeometry();
+                using (var c = geo.Open())
+                {
+                    c.BeginFigure(new System.Windows.Point(pts[0].X - r.X, pts[0].Y - r.Y), true, true);
+                    for (int i = 1; i < pts.Count; i++) c.LineTo(new System.Windows.Point(pts[i].X - r.X, pts[i].Y - r.Y), true, false);
+                }
+                geo.Freeze();
+                var dv = new System.Windows.Media.DrawingVisual();
+                bool png = Settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
+                using (var dc = dv.RenderOpen())
+                {
+                    if (!png) dc.DrawRectangle(System.Windows.Media.Brushes.White, null, new System.Windows.Rect(0, 0, r.Width, r.Height));
+                    dc.PushClip(geo);
+                    dc.DrawImage(crop, new System.Windows.Rect(0, 0, r.Width, r.Height));
+                    dc.Pop();
+                }
+                var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(r.Width, r.Height, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                rtb.Render(dv);
+                rtb.Freeze();
+                Finish(rtb);
+            }
+        }
+        finally { busy = false; }
+    }
+
+    /// <summary>Farbwert (#RRGGBB) im eingestellten Format.</summary>
+    string FormatColor(string hex)
+    {
+        try
+        {
+            int r = Convert.ToInt32(hex.Substring(1, 2), 16), g = Convert.ToInt32(hex.Substring(3, 2), 16), b = Convert.ToInt32(hex.Substring(5, 2), 16);
+            return Settings.ColorFormat switch
+            {
+                "rgb" => $"rgb({r}, {g}, {b})",
+                "cpp" => $"0x{r:X2}{g:X2}{b:X2}",
+                _ => hex,
+            };
+        }
+        catch { return hex; }
     }
 
     void PixelTool(PixelMode mode)
@@ -265,8 +364,9 @@ public partial class App : Application
             ov.ShowDialog();
             if (ov.Result is string hex)
             {
-                try { Clipboard.SetText(hex); } catch { }
-                tray?.ShowBalloonTip(1500, "Knipser", $"Farbe {hex} in die Zwischenablage kopiert.", Forms.ToolTipIcon.Info);
+                var txt = FormatColor(hex);
+                try { Clipboard.SetText(txt); } catch { }
+                tray?.ShowBalloonTip(1500, "Knipser", $"Farbe {txt} in die Zwischenablage kopiert.", Forms.ToolTipIcon.Info);
             }
         }
         finally { busy = false; }

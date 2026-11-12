@@ -14,7 +14,7 @@ internal class SettingsWindow : Window
 {
     readonly Settings s;
     readonly App app;
-    readonly TextBox region = Hk(), full = Hk(), win = Hk(), scroll = Hk(), picker = Hk(), magnifier = Hk(), rulerKey = Hk();
+    readonly TextBox region = Hk(), full = Hk(), win = Hk(), scroll = Hk(), picker = Hk(), magnifier = Hk(), rulerKey = Hk(), fixedKey = Hk(), repeatKey = Hk(), freeKey = Hk();
     readonly TextBox folder = new() { Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)), Padding = new Thickness(6, 4, 6, 4), VerticalContentAlignment = VerticalAlignment.Center };
     readonly RadioButton jpg = new() { Content = "JPG", GroupName = "fmt" }, png = new() { Content = "PNG", GroupName = "fmt" };
     readonly Slider quality = new() { Minimum = 10, Maximum = 100, Width = 130, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
@@ -26,6 +26,9 @@ internal class SettingsWindow : Window
     readonly Slider delay = new() { Minimum = 0, Maximum = 10, Width = 130, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock delayText = new() { Width = 60, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right };
     readonly CheckBox autostart = new() { Content = "Mit Windows starten" };
+    readonly TextBox fixedW = new() { Width = 60, Padding = new Thickness(4, 3, 4, 3) }, fixedH = new() { Width = 60, Padding = new Thickness(4, 3, 4, 3) };
+    readonly TextBox pattern = new() { Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(6, 4, 6, 4), Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)) };
+    readonly ComboBox colorFmt = new() { Width = 170 };
     readonly TextBlock msg = new() { Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x8A, 0x65)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
 
     readonly Button updBtn = new() { Content = "Nach Updates suchen", Padding = new Thickness(10, 4, 10, 4) };
@@ -93,6 +96,15 @@ internal class SettingsWindow : Window
         root.Children.Add(Row("Farbpipette", picker));
         root.Children.Add(Row("Lupe", magnifier));
         root.Children.Add(Row("Messen (Lineal)", rulerKey));
+        root.Children.Add(Row("Fester Bereich", fixedKey));
+        root.Children.Add(Row("Freihand-Auswahl", freeKey));
+        root.Children.Add(Row("Letzten Bereich wiederholen", repeatKey));
+        var fr2 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
+        fr2.Children.Add(new TextBlock { Text = "Größe des festen Bereichs (px)", Width = 230, VerticalAlignment = VerticalAlignment.Center });
+        fr2.Children.Add(fixedW);
+        fr2.Children.Add(new TextBlock { Text = " × ", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) });
+        fr2.Children.Add(fixedH);
+        root.Children.Add(fr2);
 
         root.Children.Add(Head("Speichern"));
         var fr = new DockPanel { Margin = new Thickness(0, 2, 0, 6) };
@@ -100,6 +112,8 @@ internal class SettingsWindow : Window
         DockPanel.SetDock(browse, Dock.Right);
         fr.Children.Add(browse); fr.Children.Add(folder);
         root.Children.Add(fr);
+        root.Children.Add(new TextBlock { Text = "Dateiname (Datum/Uhrzeit in { }, z. B. Knipser_{yyyy-MM-dd_HH-mm-ss})", Foreground = Brushes.Gray, FontSize = 12, Margin = new Thickness(0, 4, 0, 2) });
+        root.Children.Add(pattern);
         browse.Click += (_, _) =>
         {
             using var d = new Forms.FolderBrowserDialog { SelectedPath = folder.Text, Description = "Speicherordner für Screenshots" };
@@ -125,6 +139,12 @@ internal class SettingsWindow : Window
         root.Children.Add(qr);
 
         root.Children.Add(Head("Verhalten"));
+        var cr = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
+        cr.Children.Add(new TextBlock { Text = "Farbpipette kopiert als", Width = 230, VerticalAlignment = VerticalAlignment.Center });
+        colorFmt.Items.Add("Hex (#RRGGBB)"); colorFmt.Items.Add("RGB (rgb(r, g, b))"); colorFmt.Items.Add("C++ (0xRRGGBB)");
+        colorFmt.SelectedIndex = s.ColorFormat switch { "rgb" => 1, "cpp" => 2, _ => 0 };
+        cr.Children.Add(colorFmt);
+        root.Children.Add(cr);
         var dr = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
         dr.Children.Add(new TextBlock { Text = "Aufnahmeverzögerung", Width = 230, VerticalAlignment = VerticalAlignment.Center });
         dr.Children.Add(delay); dr.Children.Add(delayText);
@@ -156,18 +176,25 @@ internal class SettingsWindow : Window
         var cancel = new Button { Content = "Abbrechen", Padding = new Thickness(18, 6, 18, 6), Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
         cancel.Click += (_, _) => Close();
         buttons.Children.Add(ok); buttons.Children.Add(cancel);
-        root.Children.Add(buttons);
-        Content = root;
+        buttons.Margin = new Thickness(20, 8, 20, 14);
+        var dock = new DockPanel();
+        DockPanel.SetDock(buttons, Dock.Bottom);
+        dock.Children.Add(buttons);
+        dock.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = root });
+        MaxHeight = SystemParameters.WorkArea.Height - 10;
+        Content = dock;
 
         region.Text = s.HotkeyRegion; full.Text = s.HotkeyFullscreen; win.Text = s.HotkeyWindow; scroll.Text = s.HotkeyScroll;
         picker.Text = s.HotkeyPicker; magnifier.Text = s.HotkeyMagnifier; rulerKey.Text = s.HotkeyRuler;
+        fixedKey.Text = s.HotkeyFixed; repeatKey.Text = s.HotkeyRepeat; freeKey.Text = s.HotkeyFreehand;
+        fixedW.Text = s.FixedWidth.ToString(); fixedH.Text = s.FixedHeight.ToString(); pattern.Text = s.FileNamePattern;
         folder.Text = s.SaveFolder;
         openEditor.IsChecked = s.OpenEditor; saveOnClose.IsChecked = s.SaveOnClose; copy.IsChecked = s.CopyToClipboard;
         autostart.IsChecked = GetAutostart();
         cursorCb.IsChecked = s.IncludeCursor;
         checkUpd.IsChecked = s.CheckUpdates;
 
-        foreach (var t in new[] { region, full, win, scroll, picker, magnifier, rulerKey })
+        foreach (var t in new[] { region, full, win, scroll, picker, magnifier, rulerKey, fixedKey, repeatKey, freeKey })
         {
             t.PreviewKeyDown += HotkeyKey;
             t.GotKeyboardFocus += HotkeyFocus;
@@ -262,7 +289,7 @@ internal class SettingsWindow : Window
 
     void Apply()
     {
-        var list = new[] { region.Text, full.Text, win.Text, scroll.Text, picker.Text, magnifier.Text, rulerKey.Text };
+        var list = new[] { region.Text, full.Text, win.Text, scroll.Text, picker.Text, magnifier.Text, rulerKey.Text, fixedKey.Text, repeatKey.Text, freeKey.Text };
         var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var h in list)
             if (!string.IsNullOrEmpty(h) && !used.Add(h)) { msg.Text = $"„{h}“ ist doppelt vergeben."; return; }
@@ -271,6 +298,11 @@ internal class SettingsWindow : Window
         // (z. B. PicPick). Es wird dann nur gemeldet und ist aktiv, sobald es frei ist.
         s.HotkeyRegion = region.Text; s.HotkeyFullscreen = full.Text; s.HotkeyWindow = win.Text; s.HotkeyScroll = scroll.Text;
         s.HotkeyPicker = picker.Text; s.HotkeyMagnifier = magnifier.Text; s.HotkeyRuler = rulerKey.Text;
+        s.HotkeyFixed = fixedKey.Text; s.HotkeyRepeat = repeatKey.Text; s.HotkeyFreehand = freeKey.Text;
+        if (int.TryParse(fixedW.Text, out int fw) && fw >= 10) s.FixedWidth = fw;
+        if (int.TryParse(fixedH.Text, out int fh) && fh >= 10) s.FixedHeight = fh;
+        s.FileNamePattern = string.IsNullOrWhiteSpace(pattern.Text) ? "Knipser_{yyyy-MM-dd_HH-mm-ss}" : pattern.Text.Trim();
+        s.ColorFormat = colorFmt.SelectedIndex switch { 1 => "rgb", 2 => "cpp", _ => "hex" };
         var failed = app.RegisterAll();
         s.SaveFolder = string.IsNullOrWhiteSpace(folder.Text) ? s.SaveFolder : folder.Text.Trim();
         s.ImageFormat = png.IsChecked == true ? "png" : "jpg";
