@@ -717,7 +717,7 @@ public partial class EditorWindow : Window
         startPanel = panels["Start"];
 
         // --- Reiter Datei ---
-        var fmtBox = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) };
+        var fmtBox = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 4, 0) };
         foreach (var f in new[] { "jpg", "png", "webp" })
         {
             var rb = new RadioButton { Content = f.ToUpperInvariant(), GroupName = "fmt", IsChecked = Ext == f, ToolTip = "Format beim Speichern", Margin = new Thickness(2, 1, 2, 1) };
