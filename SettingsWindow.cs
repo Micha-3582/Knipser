@@ -17,7 +17,9 @@ internal class SettingsWindow : Window
     readonly App app;
     readonly TextBox region = Hk(), full = Hk(), win = Hk(), scroll = Hk(), picker = Hk(), magnifier = Hk(), rulerKey = Hk(), fixedKey = Hk(), repeatKey = Hk(), freeKey = Hk();
     readonly TextBox folder = new() { Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)), Padding = new Thickness(6, 4, 6, 4), VerticalContentAlignment = VerticalAlignment.Center };
-    readonly RadioButton jpg = new() { Content = "JPG", GroupName = "fmt" }, png = new() { Content = "PNG", GroupName = "fmt" };
+    readonly RadioButton jpg = new() { Content = "JPG", GroupName = "fmt" }, png = new() { Content = "PNG", GroupName = "fmt" }, webp = new() { Content = "WebP", GroupName = "fmt" };
+    readonly Slider webpQuality = new() { Minimum = 10, Maximum = 100, Width = 130, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
+    readonly TextBlock webpQualityText = new() { Width = 34, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right };
     readonly Slider quality = new() { Minimum = 10, Maximum = 100, Width = 130, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock qualityText = new() { Width = 34, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right };
     readonly CheckBox openEditor = new() { Content = "Nach der Aufnahme den Editor öffnen" };
@@ -175,10 +177,10 @@ internal class SettingsWindow : Window
         pName.Children.Add(help);
         pName.Children.Add(Head("Dateiformat"));
         var fmt = new StackPanel { Orientation = Orientation.Horizontal };
-        fmt.Children.Add(jpg); fmt.Children.Add(png);
-        foreach (var rb in new[] { jpg, png }) { rb.Foreground = Foreground; rb.Margin = new Thickness(0, 0, 18, 0); }
-        jpg.IsChecked = !s.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
-        png.IsChecked = !jpg.IsChecked;
+        fmt.Children.Add(jpg); fmt.Children.Add(png); fmt.Children.Add(webp);
+        foreach (var rb in new[] { jpg, png, webp }) { rb.Foreground = Foreground; rb.Margin = new Thickness(0, 0, 18, 0); }
+        var fm = s.ImageFormat.ToLowerInvariant();
+        png.IsChecked = fm == "png"; webp.IsChecked = fm == "webp"; jpg.IsChecked = !(png.IsChecked == true || webp.IsChecked == true);
         pName.Children.Add(Line("Bildformat", fmt));
         var qr = new StackPanel { Orientation = Orientation.Horizontal };
         qr.Children.Add(quality); qr.Children.Add(qualityText);
@@ -187,9 +189,16 @@ internal class SettingsWindow : Window
         qualityText.Text = ((int)quality.Value).ToString();
         quality.ValueChanged += (_, e) => qualityText.Text = ((int)e.NewValue).ToString();
         pName.Children.Add(Line("JPG-Qualität", qr));
-        void ShowPreviewName() => namePreview.Text = Settings.Expand(pattern.Text, s.FileCounter + 1) + (png.IsChecked == true ? ".png" : ".jpg");
+        var wq = new StackPanel { Orientation = Orientation.Horizontal };
+        wq.Children.Add(webpQuality); wq.Children.Add(webpQualityText);
+        wq.Children.Add(new TextBlock { Text = "← kleiner", Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
+        webpQuality.Value = Math.Clamp(s.WebpQuality, 10, 100);
+        webpQualityText.Text = ((int)webpQuality.Value).ToString();
+        webpQuality.ValueChanged += (_, e) => webpQualityText.Text = ((int)e.NewValue).ToString();
+        pName.Children.Add(Line("WebP-Qualität", wq));
+        void ShowPreviewName() => namePreview.Text = Settings.Expand(pattern.Text, s.FileCounter + 1) + (png.IsChecked == true ? ".png" : webp.IsChecked == true ? ".webp" : ".jpg");
         pattern.TextChanged += (_, _) => ShowPreviewName();
-        jpg.Checked += (_, _) => ShowPreviewName(); png.Checked += (_, _) => ShowPreviewName();
+        jpg.Checked += (_, _) => ShowPreviewName(); png.Checked += (_, _) => ShowPreviewName(); webp.Checked += (_, _) => ShowPreviewName();
 
         // Speichern
         var pSave = NewPage("Speichern");
@@ -412,8 +421,9 @@ internal class SettingsWindow : Window
         s.ColorFormat = colorFmt.SelectedIndex switch { 1 => "rgb", 2 => "cpp", _ => "hex" };
         var failed = app.RegisterAll();
         s.SaveFolder = string.IsNullOrWhiteSpace(folder.Text) ? s.SaveFolder : folder.Text.Trim();
-        s.ImageFormat = png.IsChecked == true ? "png" : "jpg";
+        s.ImageFormat = png.IsChecked == true ? "png" : webp.IsChecked == true ? "webp" : "jpg";
         s.JpgQuality = (int)quality.Value;
+        s.WebpQuality = (int)webpQuality.Value;
         s.CheckUpdates = checkUpd.IsChecked == true;
         s.CaptureDelay = (int)delay.Value;
         s.ScrollDelayMs = (int)scrollDelay.Value;

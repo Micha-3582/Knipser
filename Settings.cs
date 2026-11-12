@@ -11,9 +11,11 @@ public class Settings
     public string SaveFolder { get; set; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Knipser");
     /// <summary>Standard-Bildformat beim Speichern: "jpg" oder "png".</summary>
-    public string ImageFormat { get; set; } = "jpg";
+    public string ImageFormat { get; set; } = "jpg";   // jpg, png oder webp
     /// <summary>JPG-Qualität 1–100 (100 = beste Qualität, größte Datei).</summary>
     public int JpgQuality { get; set; } = 92;
+    /// <summary>WebP-Qualität 1–100.</summary>
+    public int WebpQuality { get; set; } = 90;
     /// <summary>Beim Start still nach neuer Version suchen (kein Popup, nur Eintrag im Tray-Menü).</summary>
     public bool CheckUpdates { get; set; } = true;
     /// <summary>Sekunden Wartezeit vor der Aufnahme (0 = sofort).</summary>

@@ -11,11 +11,14 @@
     <RootNamespace>Knipser</RootNamespace>
     <NoWarn>WFAC010</NoWarn>
     <ApplicationIcon>Knipser.ico</ApplicationIcon>
-    <Version>1.25.0</Version>
+    <Version>1.26.0</Version>
     <SatelliteResourceLanguages>de</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Knipser.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
   </ItemGroup>
 </Project>
 

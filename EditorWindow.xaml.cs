@@ -718,7 +718,7 @@ public partial class EditorWindow : Window
 
         // --- Reiter Datei ---
         var fmtBox = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) };
-        foreach (var f in new[] { "jpg", "png" })
+        foreach (var f in new[] { "jpg", "png", "webp" })
         {
             var rb = new RadioButton { Content = f.ToUpperInvariant(), GroupName = "fmt", IsChecked = Ext == f, ToolTip = "Format beim Speichern", Margin = new Thickness(2, 1, 2, 1) };
             var ff = f;
@@ -2451,8 +2451,30 @@ public partial class EditorWindow : Window
         };
     }
 
+    /// <summary>Bild als WebP-Bytes (SkiaSharp).</summary>
+    byte[] WebpBytes(BitmapSource src)
+    {
+        int w = src.PixelWidth, h = src.PixelHeight;
+        var conv = new FormatConvertedBitmap(src, PixelFormats.Bgra32, null, 0);
+        var px = new byte[w * h * 4];
+        conv.CopyPixels(px, w * 4, 0);
+        var info = new SkiaSharp.SKImageInfo(w, h, SkiaSharp.SKColorType.Bgra8888, SkiaSharp.SKAlphaType.Unpremul);
+        using var bm = new SkiaSharp.SKBitmap(info);
+        System.Runtime.InteropServices.Marshal.Copy(px, 0, bm.GetPixels(), px.Length);
+        using var img = SkiaSharp.SKImage.FromBitmap(bm);
+        using var data = img.Encode(SkiaSharp.SKEncodedImageFormat.Webp, Math.Clamp(settings.WebpQuality, 1, 100));
+        return data.ToArray();
+    }
+
     void SaveTo(string path)
     {
+        if (System.IO.Path.GetExtension(path).Equals(".webp", StringComparison.OrdinalIgnoreCase))
+        {
+            File.WriteAllBytes(path, WebpBytes(Render()));
+            saved = true;
+            Status.Text = "Gespeichert: " + path;
+            return;
+        }
         var enc = EncoderFor(path);
         enc.Frames.Add(BitmapFrame.Create(Render()));
         using var fs = File.Create(path);
@@ -2461,7 +2483,7 @@ public partial class EditorWindow : Window
         Status.Text = "Gespeichert: " + path;
     }
 
-    string Ext => settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase) ? "png" : "jpg";
+    string Ext => settings.ImageFormat.ToLowerInvariant() switch { "png" => "png", "webp" => "webp", _ => "jpg" };
 
     void QuickSave()
     {
@@ -2477,8 +2499,8 @@ public partial class EditorWindow : Window
     {
         var dlg = new SaveFileDialog
         {
-            Filter = "JPEG (*.jpg)|*.jpg|PNG (*.png)|*.png|Bitmap (*.bmp)|*.bmp|GIF (*.gif)|*.gif",
-            FilterIndex = Ext == "png" ? 2 : 1,
+            Filter = "JPEG (*.jpg)|*.jpg|PNG (*.png)|*.png|WebP (*.webp)|*.webp|Bitmap (*.bmp)|*.bmp|GIF (*.gif)|*.gif",
+            FilterIndex = Ext == "png" ? 2 : Ext == "webp" ? 3 : 1,
             FileName = settings.MakeFileName(),
             DefaultExt = "." + Ext,
         };
