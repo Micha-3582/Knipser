@@ -36,6 +36,8 @@ internal class ColorPickerWindow : Window
     readonly Border newBox = new() { Height = 44, CornerRadius = new CornerRadius(4, 4, 0, 0), BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), BorderThickness = new Thickness(1) };
     readonly Border oldBox = new() { Height = 28, CornerRadius = new CornerRadius(0, 0, 4, 4), BorderBrush = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), BorderThickness = new Thickness(1), Cursor = Cursors.Hand, ToolTip = "Ursprüngliche Farbe wiederherstellen" };
     readonly TextBox hex = Box(80), tr = Box(46), tg = Box(46), tb = Box(46);
+    ComboBox sample = null!;
+    int[] sizes = null!;
     readonly WrapPanel customPanel = new() { Width = 8 * 28, HorizontalAlignment = HorizontalAlignment.Left };
 
     public Color Current => FromHsv(h, s, v);
@@ -137,8 +139,8 @@ internal class ColorPickerWindow : Window
             var c = (Color)ColorConverter.ConvertFromString(hx);
             presetPanel.Children.Add(Dot(c, hx, () => SetNewColor(c)));
         }
-        var sample = new ComboBox { Width = 190, Margin = new Thickness(0, 0, 0, 0) };
-        int[] sizes = { 1, 3, 5, 11, 31 };
+        sample = new ComboBox { Width = 190, Margin = new Thickness(0, 0, 0, 0) };
+        sizes = new[] { 1, 3, 5, 11, 31 };
         foreach (var n in sizes) sample.Items.Add(n == 1 ? "1 Pixel" : $"Durchschnitt {n} × {n} Pixel");
         sample.SelectedIndex = Math.Max(0, Array.IndexOf(sizes, settings.PickSample));
         sample.SelectionChanged += (_, _) => { if (sample.SelectedIndex >= 0) { settings.PickSample = sizes[sample.SelectedIndex]; settings.Save(); } };
@@ -226,7 +228,14 @@ internal class ColorPickerWindow : Window
         BuildCustom();
     }
 
-    // ---------- Live-Vorschau (Maus über dem Bild) ----------
+    /// <summary>Aufnahmebereich neu aus den Einstellungen lesen (wenn er im Menüband geändert wurde).</summary>
+    public void RefreshSample()
+    {
+        int i = Math.Max(0, Array.IndexOf(sizes, settings.PickSample));
+        if (sample.SelectedIndex != i) sample.SelectedIndex = i;
+    }
+
+    // ---------- (nicht mehr benutzt) Vorschau ----------
     /// <summary>Zeigt die Farbe unter dem Mauszeiger überall im Farbwähler (Spektrumfläche, Farbtonleiste, Felder), ohne sie schon zu übernehmen.</summary>
     public void ShowPreview(Color col)
     {

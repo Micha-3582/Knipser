@@ -286,6 +286,8 @@ public partial class EditorWindow : Window
     readonly Border loupeInfo = new() { Background = new SolidColorBrush(Color.FromArgb(0xDD, 0x20, 0x20, 0x20)), CornerRadius = new CornerRadius(3), Padding = new Thickness(6, 2, 6, 2), IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     readonly TextBlock loupeText = new() { Foreground = Brushes.White, FontSize = 12 };
     bool loupeInit;
+    Point lastLoupeImg, lastLoupeLayer;
+    static readonly int[] LoupeSteps = { 7, 9, 11, 15, 21, 31, 45, 61 };
 
     void ShowLoupe(Point pImg, Point pLayer, Color? c)
     {
@@ -295,10 +297,11 @@ public partial class EditorWindow : Window
             LoupeLayer.Children.Add(loupeCircle); LoupeLayer.Children.Add(loupeBox); LoupeLayer.Children.Add(loupeInfo);
             loupeInit = true;
         }
+        lastLoupeImg = pImg; lastLoupeLayer = pLayer;
         int px = (int)Math.Floor(pImg.X), py = (int)Math.Floor(pImg.Y);
         if (px < 0 || py < 0 || px >= bmp.PixelWidth || py >= bmp.PixelHeight) { HideLoupe(); return; }
         int sample = Math.Max(1, settings.PickSample);
-        int n = (sample > 11 ? sample + 6 : 15) | 1;
+        int n = Math.Max(settings.LoupePixels, sample + 4) | 1;
         loupeCircle.Fill = new ImageBrush(bmp)
         {
             ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(px + 0.5 - n / 2.0, py + 0.5 - n / 2.0, n, n), Stretch = Stretch.Fill,
@@ -312,7 +315,7 @@ public partial class EditorWindow : Window
         double cell = LoupeSize / n, box = Math.Min(LoupeSize - 4, cell * sample);
         loupeBox.Width = loupeBox.Height = box;
         Canvas.SetLeft(loupeBox, lx + (LoupeSize - box) / 2); Canvas.SetTop(loupeBox, ly + (LoupeSize - box) / 2);
-        loupeText.Text = c is Color cc ? $"#{cc.R:X2}{cc.G:X2}{cc.B:X2}   x {px}  y {py}" : $"x {px}  y {py}";
+        loupeText.Text = (c is Color cc ? $"#{cc.R:X2}{cc.G:X2}{cc.B:X2}   x {px}  y {py}" : $"x {px}  y {py}") + $"   {LoupeSize / n:0.#}×";
         Canvas.SetLeft(loupeInfo, lx); Canvas.SetTop(loupeInfo, ly + LoupeSize + 6);
         loupeCircle.Visibility = loupeBox.Visibility = loupeInfo.Visibility = Visibility.Visible;
     }
@@ -431,7 +434,7 @@ public partial class EditorWindow : Window
             row.Children.Add(new TextBlock { Text = size == Math.Max(1, settings.PickSample) ? "\u2713" : "", Foreground = Ink, Width = 16, VerticalAlignment = VerticalAlignment.Center });
             row.Children.Add(new TextBlock { Text = size == 1 ? "1 Pixel" : $"Durchschnitt {size} × {size} Pixel", Foreground = Ink, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0), MinWidth = 160 });
             var b = new Button { Content = row, Style = (Style)FindResource("RibbonBtn"), HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(6, 3, 6, 3) };
-            b.Click += (_, _) => { settings.PickSample = size; settings.Save(); pop.IsOpen = false; };
+            b.Click += (_, _) => { settings.PickSample = size; settings.Save(); cpWin?.RefreshSample(); pop.IsOpen = false; };
             panel.Children.Add(b);
         }
         pop.Child = new Border
@@ -738,6 +741,17 @@ public partial class EditorWindow : Window
 
     void Scroller_Wheel(object sender, MouseWheelEventArgs e)
     {
+        if ((picking || cpWin != null) && loupeCircle.Visibility == Visibility.Visible)
+        {
+            // Mausrad zoomt die Lupe der Pipette
+            int idx = Array.IndexOf(LoupeSteps, settings.LoupePixels);
+            if (idx < 0) idx = 3;
+            idx = Math.Clamp(idx + (e.Delta > 0 ? -1 : 1), 0, LoupeSteps.Length - 1);
+            settings.LoupePixels = LoupeSteps[idx]; settings.Save();
+            ShowLoupe(lastLoupeImg, lastLoupeLayer, SampleAt(lastLoupeImg));
+            e.Handled = true;
+            return;
+        }
         if (Keyboard.Modifiers != ModifierKeys.Control) return;
         SetZoom(Zoom.ScaleX * (e.Delta > 0 ? 1.15 : 1 / 1.15));
         e.Handled = true;
@@ -888,11 +902,6 @@ public partial class EditorWindow : Window
         if (picking || cpWin != null)
         {
             ShowLoupe(p, e.GetPosition(LoupeLayer), SampleAt(p));
-            if (SampleAt(p) is Color lc)
-            {
-                if (cpWin != null) cpWin.ShowPreview(lc);
-                else if (colorBox != null) colorBox.Background = new SolidColorBrush(lc);   // Pipette-Modus: Farbfeld zeigt live die Farbe unter dem Zeiger
-            }
             if (SampleAt(p) is Color hc) Status.Text = cpWin != null ? $"Farbe unter dem Zeiger: #{hc.R:X2}{hc.G:X2}{hc.B:X2}   (Klick = in den Farbwähler übernehmen)" : $"Pipette: #{hc.R:X2}{hc.G:X2}{hc.B:X2}   (Klick = übernehmen, Esc = abbrechen)";
             return;
         }
