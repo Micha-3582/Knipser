@@ -188,6 +188,10 @@ public partial class App : Application
     {
         var w = new EditorWindow(bmp, Settings);
         w.Show();
+        if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
+        w.Topmost = true;   // Trick, damit das Fenster sicher nach vorn kommt
         w.Activate();
+        w.Topmost = false;
+        w.Focus();
     }
 }
