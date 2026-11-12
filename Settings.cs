@@ -20,6 +20,9 @@ public class Settings
     public string HotkeyFullscreen { get; set; } = "Ctrl+PrintScreen";
     public string HotkeyWindow { get; set; } = "Alt+PrintScreen";
     public string HotkeyScroll { get; set; } = "Ctrl+Shift+PrintScreen";
+    public string HotkeyPicker { get; set; } = "Ctrl+Shift+F10";
+    public string HotkeyMagnifier { get; set; } = "Ctrl+Shift+F11";
+    public string HotkeyRuler { get; set; } = "Ctrl+Shift+F12";
 
     static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Knipser", "settings.json");

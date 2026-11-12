@@ -50,6 +50,9 @@ public partial class App : Application
         Register(2, Settings.HotkeyFullscreen, CaptureFullscreen, failed);
         Register(3, Settings.HotkeyWindow, CaptureWindow, failed);
         Register(4, Settings.HotkeyScroll, CaptureScroll, failed);
+        Register(5, Settings.HotkeyPicker, () => PixelTool(PixelMode.Picker), failed);
+        Register(6, Settings.HotkeyMagnifier, () => PixelTool(PixelMode.Magnifier), failed);
+        Register(7, Settings.HotkeyRuler, ToggleRuler, failed);
         return failed;
     }
 
@@ -150,6 +153,9 @@ public partial class App : Application
         menu.Items.Add("Vollbild aufnehmen", null, (_, _) => CaptureFullscreen());
         menu.Items.Add("Fenster unter Mauszeiger", null, (_, _) => CaptureWindow());
         menu.Items.Add("Scrollende Aufnahme", null, (_, _) => CaptureScroll());
+        menu.Items.Add("Farbpipette", null, (_, _) => PixelTool(PixelMode.Picker));
+        menu.Items.Add("Lupe", null, (_, _) => PixelTool(PixelMode.Magnifier));
+        menu.Items.Add("Lineal", null, (_, _) => ToggleRuler());
         menu.Items.Add("Bild aus Zwischenablage öffnen", null, (_, _) => OpenClipboard());
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Einstellungen…", null, (_, _) => ShowSettings());
@@ -218,6 +224,35 @@ public partial class App : Application
             }
         }
         finally { busy = false; }
+    }
+
+    void PixelTool(PixelMode mode)
+    {
+        if (busy) return;
+        busy = true;
+        try
+        {
+            var vs = Capture.VirtualScreen;
+            var ov = new PixelOverlay(Capture.Grab(vs), vs, mode);
+            ov.ShowDialog();
+            if (ov.Result is string hex)
+            {
+                try { Clipboard.SetText(hex); } catch { }
+                tray?.ShowBalloonTip(1500, "Knipser", $"Farbe {hex} in die Zwischenablage kopiert.", Forms.ToolTipIcon.Info);
+            }
+        }
+        finally { busy = false; }
+    }
+
+    RulerWindow? ruler;
+
+    void ToggleRuler()
+    {
+        if (ruler != null) { ruler.Close(); return; }
+        ruler = new RulerWindow();
+        ruler.Closed += (_, _) => ruler = null;
+        ruler.Show();
+        ruler.Activate();
     }
 
     async void CaptureScroll()

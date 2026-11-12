@@ -59,6 +59,7 @@
                 </Grid.LayoutTransform>
                 <Canvas x:Name="Art" ClipToBounds="True" Focusable="True" Background="Transparent"
                         MouseLeftButtonDown="Art_Down" MouseMove="Art_Move" MouseLeftButtonUp="Art_Up"/>
+                <Canvas x:Name="Sel"/>
             </Grid>
         </ScrollViewer>
     </DockPanel>

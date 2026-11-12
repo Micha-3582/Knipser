@@ -134,13 +134,15 @@ public partial class EditorWindow : Window
         baseImg.Source = b;
         baseImg.Width = b.PixelWidth; baseImg.Height = b.PixelHeight;
         Art.Width = b.PixelWidth; Art.Height = b.PixelHeight;
-        Status.Text = $"{b.PixelWidth} × {b.PixelHeight} px";
+        Sel.Width = b.PixelWidth; Sel.Height = b.PixelHeight;
+        Status.Text = $"{b.PixelWidth} × {b.PixelHeight} px  ·  Elemente verschieben: Auswahl-Werkzeug oder Strg+Ziehen, Anfasser zum Ändern der Größe";
     }
 
     void SetZoom(double z)
     {
         z = Math.Clamp(z, 0.1, 8);
         Zoom.ScaleX = Zoom.ScaleY = z;
+        PositionSel();
     }
 
     void FitZoom()
@@ -183,6 +185,7 @@ public partial class EditorWindow : Window
         a.undo();
         redoStack.Push(a);
         saved = false;
+        RefreshSel();
     }
 
     void Redo()
@@ -192,6 +195,7 @@ public partial class EditorWindow : Window
         a.redo();
         undoStack.Push(a);
         saved = false;
+        RefreshSel();
     }
 
     UIElement? FindEl(object src)
@@ -214,18 +218,20 @@ public partial class EditorWindow : Window
         p0 = e.GetPosition(Art);
         shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
 
-        if (tool == Tool.Pointer)
+        var hit = FindEl(e.OriginalSource);
+        if (tool == Tool.Pointer || Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
-            dragEl = FindEl(e.OriginalSource);
-            selected = dragEl;
-            if (dragEl != null)
+            dragEl = hit;
+            Select(hit);
+            if (hit != null)
             {
-                var t = GetT(dragEl);
+                var t = GetT(hit);
                 dragStart = p0; dragOrig = new Point(t.X, t.Y);
                 Art.CaptureMouse();
             }
             return;
         }
+        Select(null);
         if (tool == Tool.Text) { AddText(p0); return; }
         if (tool == Tool.Number) { AddNumber(p0); return; }
 
@@ -265,11 +271,12 @@ public partial class EditorWindow : Window
     void Art_Move(object sender, MouseEventArgs e)
     {
         var p = e.GetPosition(Art);
-        if (tool == Tool.Pointer && dragEl != null)
+        if (dragEl != null)
         {
             var t = GetT(dragEl);
             t.X = dragOrig.X + p.X - dragStart.X;
             t.Y = dragOrig.Y + p.Y - dragStart.Y;
+            PositionSel();
             return;
         }
         if (!drawing || cur == null) return;
@@ -281,7 +288,8 @@ public partial class EditorWindow : Window
                 break;
             case Path path:
                 if (sh) p = SnapAngle(p0, p);
-                path.Data = ArrowGeo(p0, p, tool == Tool.Arrow);
+                path.Tag = new LineInfo { A = p0, B = p, Arrow = tool == Tool.Arrow };
+                path.Data = ArrowGeo(p0, p, tool == Tool.Arrow, path.StrokeThickness);
                 break;
             case Shape s:
                 if (sh && tool != Tool.Crop)
@@ -337,9 +345,174 @@ public partial class EditorWindow : Window
             if (px == null) return;
             Art.Children.Add(px);
             Push(() => Art.Children.Remove(px), () => Art.Children.Add(px));
+            Select(px);
             return;
         }
         Push(() => Art.Children.Remove(added), () => Art.Children.Add(added));
+        Select(added);
+    }
+
+    // ---------- Auswahl & Anfasser ----------
+    sealed class LineInfo { public Point A, B; public bool Arrow; }
+
+    Rectangle? selBox;
+    readonly List<Rectangle> handles = new();
+    int activeHandle = -1;
+    Rect rectBefore;
+    LineInfo? lineBefore;
+
+    static bool IsRectLike(UIElement e) => e is Rectangle || e is Ellipse || e is Image;
+
+    static Rect LocalRect(UIElement e)
+    {
+        var f = (FrameworkElement)e;
+        return new Rect(Canvas.GetLeft(e), Canvas.GetTop(e), f.Width, f.Height);
+    }
+
+    static Point[] Corners(Rect r) => new[] { r.TopLeft, r.TopRight, r.BottomRight, r.BottomLeft };
+
+    void Select(UIElement? el)
+    {
+        selected = el;
+        UpdateSel();
+    }
+
+    /// <summary>Nach Rückgängig/Wiederholen/Zuschneiden: Auswahl prüfen und neu zeichnen.</summary>
+    void RefreshSel()
+    {
+        if (selected != null && !Art.Children.Contains(selected)) selected = null;
+        UpdateSel();
+    }
+
+    void UpdateSel()
+    {
+        Sel.Children.Clear();
+        handles.Clear();
+        selBox = null;
+        if (selected == null) return;
+        Art.UpdateLayout();
+        selBox = new Rectangle
+        {
+            Stroke = new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5)),
+            StrokeDashArray = new DoubleCollection { 3, 3 }, IsHitTestVisible = false,
+        };
+        Sel.Children.Add(selBox);
+        int n = IsRectLike(selected) ? 4 : selected is Path { Tag: LineInfo } ? 2 : 0;
+        for (int i = 0; i < n; i++)
+        {
+            var h = MakeHandle(i);
+            handles.Add(h);
+            Sel.Children.Add(h);
+        }
+        PositionSel();
+    }
+
+    Rectangle MakeHandle(int idx)
+    {
+        var h = new Rectangle
+        {
+            Fill = Brushes.White, Stroke = new SolidColorBrush(Color.FromRgb(0x1E, 0x88, 0xE5)), Cursor = Cursors.SizeAll,
+        };
+        h.MouseLeftButtonDown += (_, e) =>
+        {
+            if (selected == null) return;
+            activeHandle = idx;
+            if (IsRectLike(selected)) rectBefore = LocalRect(selected);
+            else if (selected is Path { Tag: LineInfo li }) lineBefore = new LineInfo { A = li.A, B = li.B, Arrow = li.Arrow };
+            h.CaptureMouse();
+            e.Handled = true;
+        };
+        h.MouseMove += (_, e) =>
+        {
+            if (activeHandle != idx || !h.IsMouseCaptured) return;
+            DragHandle(idx, e.GetPosition(Art));
+        };
+        h.MouseLeftButtonUp += (_, _) =>
+        {
+            if (activeHandle != idx) return;
+            h.ReleaseMouseCapture();
+            activeHandle = -1;
+            EndHandle();
+        };
+        return h;
+    }
+
+    void PositionSel()
+    {
+        if (selected == null || selBox == null) return;
+        double z = Zoom.ScaleX, hs = 10 / z;
+        Rect b;
+        try { b = selected.TransformToVisual(Art).TransformBounds(VisualTreeHelper.GetDescendantBounds(selected)); }
+        catch { return; }
+        if (b.IsEmpty) return;
+        b.Inflate(3 / z, 3 / z);
+        Canvas.SetLeft(selBox, b.X); Canvas.SetTop(selBox, b.Y);
+        selBox.Width = b.Width; selBox.Height = b.Height; selBox.StrokeThickness = 1 / z;
+
+        var t = GetT(selected);
+        Point[]? pts = null;
+        if (IsRectLike(selected)) pts = Corners(LocalRect(selected));
+        else if (selected is Path { Tag: LineInfo li }) pts = new[] { li.A, li.B };
+        if (pts == null) return;
+        for (int i = 0; i < handles.Count && i < pts.Length; i++)
+        {
+            var h = handles[i];
+            h.Width = h.Height = hs; h.StrokeThickness = 1.5 / z;
+            Canvas.SetLeft(h, pts[i].X + t.X - hs / 2);
+            Canvas.SetTop(h, pts[i].Y + t.Y - hs / 2);
+        }
+    }
+
+    void DragHandle(int i, Point p)
+    {
+        if (selected == null) return;
+        var t = GetT(selected);
+        var lp = new Point(p.X - t.X, p.Y - t.Y);
+        if (IsRectLike(selected))
+        {
+            var opp = Corners(rectBefore)[(i + 2) % 4];
+            var nr = new Rect(lp, opp);
+            if (nr.Width < 4 || nr.Height < 4) return;
+            SetRect(selected, nr);
+        }
+        else if (selected is Path path && path.Tag is LineInfo li)
+        {
+            if (i == 0) li.A = lp; else li.B = lp;
+            path.Data = ArrowGeo(li.A, li.B, li.Arrow, path.StrokeThickness);
+            PositionSel();
+        }
+    }
+
+    void SetRect(UIElement el, Rect r)
+    {
+        var f = (FrameworkElement)el;
+        Canvas.SetLeft(el, r.X); Canvas.SetTop(el, r.Y);
+        f.Width = r.Width; f.Height = r.Height;
+        PositionSel();
+    }
+
+    void SetLine(Path path, LineInfo info)
+    {
+        path.Tag = new LineInfo { A = info.A, B = info.B, Arrow = info.Arrow };
+        path.Data = ArrowGeo(info.A, info.B, info.Arrow, path.StrokeThickness);
+        PositionSel();
+    }
+
+    void EndHandle()
+    {
+        var el = selected;
+        if (el == null) return;
+        if (IsRectLike(el))
+        {
+            var before = rectBefore; var after = LocalRect(el);
+            if (before != after) Push(() => SetRect(el, before), () => SetRect(el, after));
+        }
+        else if (el is Path path && path.Tag is LineInfo li && lineBefore != null)
+        {
+            var b = lineBefore;
+            var a = new LineInfo { A = li.A, B = li.B, Arrow = li.Arrow };
+            Push(() => SetLine(path, b), () => SetLine(path, a));
+        }
     }
 
     Point SnapAngle(Point a, Point b)
@@ -351,7 +524,7 @@ public partial class EditorWindow : Window
         return new Point(a.X + Math.Cos(ang) * len, a.Y + Math.Sin(ang) * len);
     }
 
-    Geometry ArrowGeo(Point a, Point b, bool head)
+    static Geometry ArrowGeo(Point a, Point b, bool head, double thick)
     {
         var g = new StreamGeometry();
         using (var c = g.Open())
@@ -412,6 +585,7 @@ public partial class EditorWindow : Window
         Canvas.SetLeft(t, Canvas.GetLeft(tb)); Canvas.SetTop(t, Canvas.GetTop(tb));
         Art.Children.Add(t);
         Push(() => Art.Children.Remove(t), () => Art.Children.Add(t));
+        Select(t);
     }
 
     // ---------- Nummern ----------
@@ -425,6 +599,7 @@ public partial class EditorWindow : Window
         Canvas.SetLeft(g, p.X - d / 2); Canvas.SetTop(g, p.Y - d / 2);
         Art.Children.Add(g);
         Push(() => { Art.Children.Remove(g); counter--; }, () => { Art.Children.Add(g); counter++; });
+        Select(g);
     }
 
     // ---------- Verpixeln & Zuschneiden ----------
@@ -452,6 +627,7 @@ public partial class EditorWindow : Window
         Action undo = () => { SetBitmap(old); Shift(x, y); };
         doIt();
         Push(undo, doIt);
+        RefreshSel();
     }
 
     void Shift(double dx, double dy)
@@ -552,7 +728,7 @@ public partial class EditorWindow : Window
         else if (ctrl && e.Key == Key.C) { CopyToClipboard(); e.Handled = true; }
         else if (e.Key == Key.Delete && selected != null)
         {
-            var el = selected; selected = null;
+            var el = selected; Select(null);
             if (Art.Children.Contains(el))
             {
                 Art.Children.Remove(el);
@@ -560,5 +736,6 @@ public partial class EditorWindow : Window
             }
             e.Handled = true;
         }
+        else if (e.Key == Key.Escape && selected != null) { Select(null); e.Handled = true; }
     }
 }

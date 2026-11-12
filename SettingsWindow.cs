@@ -14,7 +14,7 @@ internal class SettingsWindow : Window
 {
     readonly Settings s;
     readonly App app;
-    readonly TextBox region = Hk(), full = Hk(), win = Hk(), scroll = Hk();
+    readonly TextBox region = Hk(), full = Hk(), win = Hk(), scroll = Hk(), picker = Hk(), magnifier = Hk(), rulerKey = Hk();
     readonly TextBox folder = new() { Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)), Padding = new Thickness(6, 4, 6, 4), VerticalContentAlignment = VerticalAlignment.Center };
     readonly RadioButton jpg = new() { Content = "JPG", GroupName = "fmt" }, png = new() { Content = "PNG", GroupName = "fmt" };
     readonly CheckBox openEditor = new() { Content = "Nach der Aufnahme den Editor öffnen" };
@@ -84,6 +84,9 @@ internal class SettingsWindow : Window
         root.Children.Add(Row("Vollbild aufnehmen", full));
         root.Children.Add(Row("Fenster unter dem Mauszeiger", win));
         root.Children.Add(Row("Scrollende Aufnahme", scroll));
+        root.Children.Add(Row("Farbpipette", picker));
+        root.Children.Add(Row("Lupe", magnifier));
+        root.Children.Add(Row("Lineal ein/aus", rulerKey));
 
         root.Children.Add(Head("Speichern"));
         var fr = new DockPanel { Margin = new Thickness(0, 2, 0, 6) };
@@ -132,12 +135,13 @@ internal class SettingsWindow : Window
         Content = root;
 
         region.Text = s.HotkeyRegion; full.Text = s.HotkeyFullscreen; win.Text = s.HotkeyWindow; scroll.Text = s.HotkeyScroll;
+        picker.Text = s.HotkeyPicker; magnifier.Text = s.HotkeyMagnifier; rulerKey.Text = s.HotkeyRuler;
         folder.Text = s.SaveFolder;
         openEditor.IsChecked = s.OpenEditor; saveOnClose.IsChecked = s.SaveOnClose; copy.IsChecked = s.CopyToClipboard;
         autostart.IsChecked = GetAutostart();
         checkUpd.IsChecked = s.CheckUpdates;
 
-        foreach (var t in new[] { region, full, win, scroll }) t.PreviewKeyDown += HotkeyKey;
+        foreach (var t in new[] { region, full, win, scroll, picker, magnifier, rulerKey }) t.PreviewKeyDown += HotkeyKey;
         ok.Click += (_, _) => Apply();
     }
 
@@ -194,17 +198,18 @@ internal class SettingsWindow : Window
 
     void Apply()
     {
-        var list = new[] { region.Text, full.Text, win.Text, scroll.Text };
+        var list = new[] { region.Text, full.Text, win.Text, scroll.Text, picker.Text, magnifier.Text, rulerKey.Text };
         var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var h in list)
             if (!string.IsNullOrEmpty(h) && !used.Add(h)) { msg.Text = $"„{h}“ ist doppelt vergeben."; return; }
 
-        var old = (s.HotkeyRegion, s.HotkeyFullscreen, s.HotkeyWindow, s.HotkeyScroll);
+        var old = (s.HotkeyRegion, s.HotkeyFullscreen, s.HotkeyWindow, s.HotkeyScroll, s.HotkeyPicker, s.HotkeyMagnifier, s.HotkeyRuler);
         s.HotkeyRegion = region.Text; s.HotkeyFullscreen = full.Text; s.HotkeyWindow = win.Text; s.HotkeyScroll = scroll.Text;
+        s.HotkeyPicker = picker.Text; s.HotkeyMagnifier = magnifier.Text; s.HotkeyRuler = rulerKey.Text;
         var failed = app.RegisterAll();
         if (failed.Count > 0)
         {
-            (s.HotkeyRegion, s.HotkeyFullscreen, s.HotkeyWindow, s.HotkeyScroll) = old;
+            (s.HotkeyRegion, s.HotkeyFullscreen, s.HotkeyWindow, s.HotkeyScroll, s.HotkeyPicker, s.HotkeyMagnifier, s.HotkeyRuler) = old;
             app.RegisterAll();
             msg.Text = "Nicht möglich, von einem anderen Programm belegt: " + string.Join(", ", failed);
             return;
