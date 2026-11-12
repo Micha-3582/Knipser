@@ -17,7 +17,7 @@ internal class SettingsWindow : Window
     readonly TextBox region = Hk(), full = Hk(), win = Hk(), scroll = Hk(), picker = Hk(), magnifier = Hk(), rulerKey = Hk();
     readonly TextBox folder = new() { Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)), Padding = new Thickness(6, 4, 6, 4), VerticalContentAlignment = VerticalAlignment.Center };
     readonly RadioButton jpg = new() { Content = "JPG", GroupName = "fmt" }, png = new() { Content = "PNG", GroupName = "fmt" };
-    readonly Slider quality = new() { Minimum = 10, Maximum = 100, Width = 150, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
+    readonly Slider quality = new() { Minimum = 10, Maximum = 100, Width = 130, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock qualityText = new() { Width = 34, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right };
     readonly CheckBox openEditor = new() { Content = "Nach der Aufnahme den Editor öffnen" };
     readonly CheckBox saveOnClose = new() { Content = "Beim Schließen des Editors automatisch speichern" };
@@ -115,7 +115,7 @@ internal class SettingsWindow : Window
         qr.Children.Add(new TextBlock { Text = "JPG-Qualität", Width = 230, VerticalAlignment = VerticalAlignment.Center });
         qr.Children.Add(quality);
         qr.Children.Add(qualityText);
-        qr.Children.Add(new TextBlock { Text = "niedriger = kleiner", Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
+        qr.Children.Add(new TextBlock { Text = "← kleiner", Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
         quality.Value = Math.Clamp(s.JpgQuality, 1, 100);
         qualityText.Text = ((int)quality.Value).ToString();
         quality.ValueChanged += (_, e) => qualityText.Text = ((int)e.NewValue).ToString();
