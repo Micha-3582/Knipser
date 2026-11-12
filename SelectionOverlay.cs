@@ -86,7 +86,7 @@ internal class SelectionOverlay : Window
     static readonly int[] Zooms = { 4, 6, 8, 10, 12, 16, 20 };
     int zoomIdx = 2;
     const double LoupeSize = 150;
-    readonly Rectangle loupe = new() { Stroke = Brushes.White, StrokeThickness = 2, IsHitTestVisible = false, Visibility = Visibility.Collapsed, Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 0, Opacity = 0.8 } };
+    readonly Ellipse loupe = new() { Stroke = Brushes.White, StrokeThickness = 2, IsHitTestVisible = false, Visibility = Visibility.Collapsed, Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 8, ShadowDepth = 0, Opacity = 0.8 } };
     readonly Rectangle centerBox = new() { Stroke = Brushes.Red, StrokeThickness = 1.5, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     readonly Border loupeInfo = new() { Background = new SolidColorBrush(Color.FromArgb(0xDD, 0x20, 0x20, 0x20)), CornerRadius = new CornerRadius(3), Padding = new Thickness(6, 2, 6, 2), IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     readonly TextBlock loupeText = new() { Foreground = Brushes.White, FontSize = 12 };

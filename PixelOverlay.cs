@@ -22,7 +22,7 @@ internal class PixelOverlay : Window
     readonly PixelMode mode;
     readonly Canvas cv = new();
     readonly Image img = new() { Stretch = Stretch.Fill };
-    readonly Rectangle loupe = new() { Stroke = Brushes.White, StrokeThickness = 2 };
+    readonly Ellipse loupe = new() { Stroke = Brushes.White, StrokeThickness = 2 };
     readonly Rectangle centerBox = new() { Stroke = Brushes.Red, StrokeThickness = 1.5, IsHitTestVisible = false };
     readonly Border info = new() { Background = new SolidColorBrush(Color.FromArgb(0xE6, 0x20, 0x20, 0x20)), CornerRadius = new CornerRadius(4), Padding = new Thickness(8, 4, 8, 4), IsHitTestVisible = false };
     readonly Rectangle swatch = new() { Width = 18, Height = 18, Stroke = Brushes.White, StrokeThickness = 1, Margin = new Thickness(0, 0, 8, 0) };
