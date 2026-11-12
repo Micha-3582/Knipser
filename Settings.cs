@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -46,6 +47,8 @@ public class Settings
     /// <summary>Kante von Verpixeln / Weichzeichnen: 0 hart, 1 weich, 2 sehr weich.</summary>
     public int BlurEdge { get; set; } = 0;
     public int SoftenEdge { get; set; } = 0;
+    /// <summary>Eigene Farbfelder im Farbwähler (8 Plätze, leer = frei), als #RRGGBB.</summary>
+    public List<string> CustomColors { get; set; } = new();
     public bool OpenEditor { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
     /// <summary>Editor schließen speichert das Bild automatisch (wie bei PicPick).</summary>

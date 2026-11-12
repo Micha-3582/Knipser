@@ -260,7 +260,7 @@ public partial class EditorWindow : Window
 
     // ---------- Pipette ----------
     /// <summary>Pipetten-Symbol (Tropfer mit Gummikappe, Glasröhrchen und Tropfen), schräg gestellt.</summary>
-    static UIElement PipetteIcon()
+    static UIElement PipetteIcon(double size = 24)
     {
         var rot = new RotateTransform(40, 20, 20);
         Path Make(string data, bool fill)
@@ -276,12 +276,13 @@ public partial class EditorWindow : Window
         var grid = new Grid { Width = 40, Height = 40 };
         grid.Children.Add(Make("M15.5,8 V6 A3.5,3.5 0 0 1 19,2.5 H21 A3.5,3.5 0 0 1 24.5,6 V8 Z M13.5,8 H26.5 V11 H13.5 Z M16,20 H24 V27 L20,32.5 L16,27 Z M20,34.5 C18.3,36.8 18.3,38.5 20,38.5 C21.7,38.5 21.7,36.8 20,34.5 Z", true));
         grid.Children.Add(Make("M16,11 V27 L20,32.5 L24,27 V11", false));
-        return new Viewbox { Width = 24, Height = 24, Child = grid };
+        return new Viewbox { Width = size, Height = size, Child = grid, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, (26 - size) / 2, 0, (26 - size) / 2) };
     }
 
     bool picking;
-    Border? customSwatch;
-    Color? customColor;
+    Border? colorBox;
+    ColorPickerWindow? cpWin;
+    Cursor? pipetteCursor;
 
     /// <summary>Farbe als aktuelle Farbe setzen (färbt auch das ausgewählte Element bzw. den gerade geschriebenen Text).</summary>
     void SetColor(Color c)
@@ -289,33 +290,83 @@ public partial class EditorWindow : Window
         color = c;
         if (editBox != null) { editBox.Foreground = Brush(); editBox.CaretBrush = Brush(); }
         else if (selected != null) ApplyColor(selected, c);
-        foreach (var sw in swatches) sw.BorderBrush = Brushes.Transparent;
-        if (customSwatch != null)
+        foreach (var sw in swatches) sw.BorderBrush = sw.Background is SolidColorBrush b && b.Color == c ? Brushes.White : Brushes.Transparent;
+        if (colorBox != null) colorBox.Background = new SolidColorBrush(c);
+    }
+
+    /// <summary>Mauszeiger in Pipettenform (Spitze unten links als Klickpunkt).</summary>
+    Cursor PipetteCursor()
+    {
+        if (pipetteCursor != null) return pipetteCursor;
+        try
         {
-            bool isPalette = false;
-            foreach (var sw in swatches) if (sw != customSwatch && sw.Background is SolidColorBrush b && b.Color == c) { sw.BorderBrush = Brushes.White; isPalette = true; }
-            if (!isPalette)
+            var rot = new RotateTransform(40, 20, 20);
+            Path Make(string data, bool fill, Brush b, double thick)
             {
-                customColor = c;
-                customSwatch.Background = new SolidColorBrush(c);
-                customSwatch.BorderBrush = Brushes.White;
+                var g = Geometry.Parse(data).Clone();
+                g.Transform = rot;
+                return new Path { Data = g, Fill = fill ? b : null, Stroke = b, StrokeThickness = thick, StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
             }
-            else if (customColor == null) customSwatch.BorderBrush = new SolidColorBrush(Color.FromRgb(0x77, 0x77, 0x77));
+            const string solid = "M15.5,8 V6 A3.5,3.5 0 0 1 19,2.5 H21 A3.5,3.5 0 0 1 24.5,6 V8 Z M13.5,8 H26.5 V11 H13.5 Z M16,20 H24 V27 L20,32.5 L16,27 Z M20,34.5 C18.3,36.8 18.3,38.5 20,38.5 C21.7,38.5 21.7,36.8 20,34.5 Z";
+            const string tube = "M16,11 V27 L20,32.5 L24,27 V11";
+            var grid = new Grid { Width = 40, Height = 40 };
+            grid.Children.Add(Make(solid, true, Brushes.Black, 4));
+            grid.Children.Add(Make(tube, false, Brushes.Black, 5));
+            grid.Children.Add(Make(solid, true, Brushes.White, 0.6));
+            grid.Children.Add(Make(tube, false, Brushes.White, 2.2));
+            grid.Measure(new Size(40, 40)); grid.Arrange(new Rect(0, 0, 40, 40));
+            var rtb = new RenderTargetBitmap(32, 32, 96 * 0.8, 96 * 0.8, PixelFormats.Pbgra32);
+            rtb.Render(grid);
+            var enc = new PngBitmapEncoder();
+            enc.Frames.Add(BitmapFrame.Create(rtb));
+            using var png = new MemoryStream();
+            enc.Save(png);
+            var data = png.ToArray();
+            using var cur = new MemoryStream();
+            using (var w = new BinaryWriter(cur, System.Text.Encoding.UTF8, true))
+            {
+                w.Write((short)0); w.Write((short)2); w.Write((short)1);       // ICONDIR: Typ Cursor, 1 Bild
+                w.Write((byte)32); w.Write((byte)32); w.Write((byte)0); w.Write((byte)0);
+                w.Write((short)9); w.Write((short)24);                          // Klickpunkt (Spitze)
+                w.Write(data.Length); w.Write(22);
+                w.Write(data);
+            }
+            cur.Position = 0;
+            pipetteCursor = new Cursor(cur);
         }
+        catch { pipetteCursor = Cursors.Cross; }
+        return pipetteCursor!;
+    }
+
+    void ShowColorPicker()
+    {
+        CommitText();
+        if (cpWin != null) { cpWin.Activate(); return; }
+        cpWin = new ColorPickerWindow(color, settings) { Owner = this };
+        cpWin.Applied += c => SetColor(c);
+        cpWin.Closed += (_, _) =>
+        {
+            cpWin = null;
+            Art.Cursor = tool == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
+            Status.Text = $"{bmp.PixelWidth} × {bmp.PixelHeight} px";
+        };
+        Art.Cursor = PipetteCursor();
+        Status.Text = "Farbwähler: ins Bild klicken, um eine Farbe aufzunehmen.";
+        cpWin.Show();
     }
 
     void StartPick()
     {
         CommitText();
         picking = true;
-        Art.Cursor = Cursors.Cross;
+        Art.Cursor = PipetteCursor();
         Status.Text = "Pipette: in das Bild klicken, um die Farbe zu übernehmen (Esc = abbrechen).";
     }
 
     void EndPick()
     {
         picking = false;
-        Art.Cursor = tool == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
+        Art.Cursor = cpWin != null ? PipetteCursor() : tool == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
         Status.Text = $"{bmp.PixelWidth} × {bmp.PixelHeight} px";
     }
 
@@ -541,7 +592,7 @@ public partial class EditorWindow : Window
         panels["Start"].Children.Add(Group("Stärke", new Border { Padding = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, Child = slider }));
 
         var palette = new[] { "#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#000000", "#FFFFFF" };
-        var grid = new UniformGrid { Rows = 2, Columns = 5, VerticalAlignment = VerticalAlignment.Center };
+        var grid = new UniformGrid { Rows = 2, Columns = 4, VerticalAlignment = VerticalAlignment.Center };
         foreach (var hex in palette)
         {
             var c = (Color)ColorConverter.ConvertFromString(hex);
@@ -551,37 +602,19 @@ public partial class EditorWindow : Window
                 Background = new SolidColorBrush(c), BorderThickness = new Thickness(2), Cursor = Cursors.Hand,
                 BorderBrush = c == color ? Brushes.White : Brushes.Transparent, ToolTip = hex,
             };
-            sw.MouseLeftButtonDown += (_, _) =>
-            {
-                color = c;
-                if (editBox != null) { editBox.Foreground = Brush(); editBox.CaretBrush = Brush(); }   // Text wird gerade geschrieben
-                else if (selected != null) ApplyColor(selected, c);
-                foreach (var s2 in swatches) s2.BorderBrush = Brushes.Transparent;
-                sw.BorderBrush = Brushes.White;
-            };
+            sw.MouseLeftButtonDown += (_, _) => SetColor(c);
             swatches.Add(sw);
             grid.Children.Add(sw);
         }
-        // eigene Farbe (aus der Pipette) und Pipette
-        customSwatch = new Border
+        colorBox = new Border
         {
-            Width = 22, Height = 22, Margin = new Thickness(3), CornerRadius = new CornerRadius(11), BorderThickness = new Thickness(2), Cursor = Cursors.Hand,
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0x77, 0x77, 0x77)), Background = Brushes.Transparent, ToolTip = "Zuletzt mit der Pipette gewählte Farbe",
+            Width = 26, Height = 26, CornerRadius = new CornerRadius(5), Background = new SolidColorBrush(color), BorderThickness = new Thickness(1.5),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xDD, 0xDD, 0xDD)), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 0),
         };
-        customSwatch.MouseLeftButtonDown += (_, _) => { if (customColor is Color cc) SetColor(cc); };
-        swatches.Add(customSwatch);
-        grid.Children.Add(customSwatch);
-        var pipBtn = new Border
-        {
-            Width = 28, Height = 28, Margin = new Thickness(0), CornerRadius = new CornerRadius(14), Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
-            Cursor = Cursors.Hand, ToolTip = "Pipette: Farbe aus dem Bild aufnehmen (Esc = abbrechen)",
-            Child = PipetteIcon(),
-        };
-        pipBtn.MouseEnter += (_, _) => pipBtn.Background = new SolidColorBrush(Color.FromRgb(0x5A, 0x5A, 0x5A));
-        pipBtn.MouseLeave += (_, _) => pipBtn.Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44));
-        pipBtn.MouseLeftButtonDown += (_, _) => StartPick();
-        grid.Children.Add(pipBtn);
-        panels["Start"].Children.Add(Group("Farben", grid));
+        panels["Start"].Children.Add(Group("Farben",
+            BigBtn(PipetteIcon(32), "Pipette", (_, _) => StartPick(), "Pipette: Farbe direkt aus dem Bild aufnehmen (Esc = abbrechen)"),
+            BigBtn(colorBox, "Farbe", (_, _) => ShowColorPicker(), "Farbwähler öffnen: Spektrum, Vorgaben und eigene Farben"),
+            grid));
 
         // --- Reiter Ansicht ---
         panels["Ansicht"].Children.Add(Group("Zoom",
@@ -677,6 +710,12 @@ public partial class EditorWindow : Window
     // ---------- Zeichnen ----------
     void Art_Down(object sender, MouseButtonEventArgs e)
     {
+        if (cpWin != null && !picking)
+        {
+            if (SampleAt(e.GetPosition(Art)) is Color wc) cpWin.SetNewColor(wc);
+            e.Handled = true;
+            return;
+        }
         if (picking)
         {
             if (SampleAt(e.GetPosition(Art)) is Color pc) SetColor(pc);
@@ -759,9 +798,9 @@ public partial class EditorWindow : Window
     void Art_Move(object sender, MouseEventArgs e)
     {
         var p = e.GetPosition(Art);
-        if (picking)
+        if (picking || cpWin != null)
         {
-            if (SampleAt(p) is Color hc) Status.Text = $"Pipette: #{hc.R:X2}{hc.G:X2}{hc.B:X2}   (Klick = übernehmen, Esc = abbrechen)";
+            if (SampleAt(p) is Color hc) Status.Text = cpWin != null ? $"Farbe unter dem Zeiger: #{hc.R:X2}{hc.G:X2}{hc.B:X2}   (Klick = in den Farbwähler übernehmen)" : $"Pipette: #{hc.R:X2}{hc.G:X2}{hc.B:X2}   (Klick = übernehmen, Esc = abbrechen)";
             return;
         }
         if (cropDrag >= 8) { CropMove(p); return; }
