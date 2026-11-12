@@ -113,6 +113,7 @@ public partial class EditorWindow : Window
             sw.MouseLeftButtonDown += (_, _) =>
             {
                 color = c;
+                if (selected != null) ApplyColor(selected, c);
                 foreach (var s in swatches) s.BorderBrush = Brushes.Transparent;
                 sw.BorderBrush = Brushes.White;
             };
@@ -370,10 +371,12 @@ public partial class EditorWindow : Window
             Art.Children.Add(px);
             Push(() => Art.Children.Remove(px), () => Art.Children.Add(px));
             Select(px);
+            toolButtons[Tool.Pointer].IsChecked = true;
             return;
         }
         Push(() => Art.Children.Remove(added), () => Art.Children.Add(added));
         Select(added);
+        toolButtons[Tool.Pointer].IsChecked = true;   // danach gleich wieder Auswahl: Element lässt sich verschieben/umfärben
     }
 
     // ---------- Auswahl & Anfasser ----------
@@ -394,6 +397,55 @@ public partial class EditorWindow : Window
     }
 
     static Point[] Corners(Rect r) => new[] { r.TopLeft, r.TopRight, r.BottomRight, r.BottomLeft };
+
+    /// <summary>Farbe eines vorhandenen Elements ändern (mit Rückgängig). false = Element hat keine Farbe.</summary>
+    bool ApplyColor(UIElement el, Color c)
+    {
+        Action? undo = null, redo = null;
+        SolidColorBrush Full() => new(c);
+        switch (el)
+        {
+            case Path p when p.Tag is LineInfo:
+            {
+                var os = p.Stroke; var of = p.Fill; bool fill = of != null;
+                undo = () => { p.Stroke = os; p.Fill = of; };
+                redo = () => { p.Stroke = Full(); p.Fill = fill ? Full() : null; };
+                break;
+            }
+            case Rectangle r when r.Stroke == null && r.Fill != null:   // Marker (halbtransparent)
+            {
+                var of = r.Fill;
+                undo = () => r.Fill = of;
+                redo = () => r.Fill = new SolidColorBrush(Color.FromArgb(0x70, c.R, c.G, c.B));
+                break;
+            }
+            case Shape s when s.Stroke != null && (s.StrokeDashArray == null || s.StrokeDashArray.Count == 0):
+            {
+                var os = s.Stroke;
+                undo = () => s.Stroke = os;
+                redo = () => s.Stroke = Full();
+                break;
+            }
+            case TextBlock tb:
+            {
+                var of = tb.Foreground;
+                undo = () => tb.Foreground = of;
+                redo = () => tb.Foreground = Full();
+                break;
+            }
+            case Grid g when g.Children.Count == 2 && g.Children[0] is Ellipse e:   // Nummer
+            {
+                var of = e.Fill;
+                undo = () => e.Fill = of;
+                redo = () => e.Fill = Full();
+                break;
+            }
+        }
+        if (redo == null || undo == null) return false;
+        redo();
+        Push(undo, redo);
+        return true;
+    }
 
     Slider? thickSlider;
     bool syncing;
