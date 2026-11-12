@@ -848,12 +848,12 @@ public partial class EditorWindow : Window
         return rtb;
     }
 
-    static BitmapEncoder EncoderFor(string path)
+    BitmapEncoder EncoderFor(string path)
     {
         var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
         return ext switch
         {
-            ".jpg" or ".jpeg" => new JpegBitmapEncoder { QualityLevel = 92 },
+            ".jpg" or ".jpeg" => new JpegBitmapEncoder { QualityLevel = Math.Clamp(settings.JpgQuality, 1, 100) },
             ".bmp" => new BmpBitmapEncoder(),
             _ => new PngBitmapEncoder(),
         };

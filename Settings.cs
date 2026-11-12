@@ -10,6 +10,8 @@ public class Settings
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Knipser");
     /// <summary>Standard-Bildformat beim Speichern: "jpg" oder "png".</summary>
     public string ImageFormat { get; set; } = "jpg";
+    /// <summary>JPG-Qualität 1–100 (100 = beste Qualität, größte Datei).</summary>
+    public int JpgQuality { get; set; } = 92;
     /// <summary>Beim Start still nach neuer Version suchen (kein Popup, nur Eintrag im Tray-Menü).</summary>
     public bool CheckUpdates { get; set; } = true;
     public bool OpenEditor { get; set; } = true;

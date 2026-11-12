@@ -17,6 +17,8 @@ internal class SettingsWindow : Window
     readonly TextBox region = Hk(), full = Hk(), win = Hk(), scroll = Hk(), picker = Hk(), magnifier = Hk(), rulerKey = Hk();
     readonly TextBox folder = new() { Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)), Padding = new Thickness(6, 4, 6, 4), VerticalContentAlignment = VerticalAlignment.Center };
     readonly RadioButton jpg = new() { Content = "JPG", GroupName = "fmt" }, png = new() { Content = "PNG", GroupName = "fmt" };
+    readonly Slider quality = new() { Minimum = 10, Maximum = 100, Width = 150, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
+    readonly TextBlock qualityText = new() { Width = 34, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right };
     readonly CheckBox openEditor = new() { Content = "Nach der Aufnahme den Editor öffnen" };
     readonly CheckBox saveOnClose = new() { Content = "Beim Schließen des Editors automatisch speichern" };
     readonly CheckBox copy = new() { Content = "Aufnahme automatisch in die Zwischenablage kopieren" };
@@ -109,6 +111,16 @@ internal class SettingsWindow : Window
         png.IsChecked = !jpg.IsChecked;
         root.Children.Add(fmt);
 
+        var qr = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
+        qr.Children.Add(new TextBlock { Text = "JPG-Qualität", Width = 230, VerticalAlignment = VerticalAlignment.Center });
+        qr.Children.Add(quality);
+        qr.Children.Add(qualityText);
+        qr.Children.Add(new TextBlock { Text = "niedriger = kleiner", Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
+        quality.Value = Math.Clamp(s.JpgQuality, 1, 100);
+        qualityText.Text = ((int)quality.Value).ToString();
+        quality.ValueChanged += (_, e) => qualityText.Text = ((int)e.NewValue).ToString();
+        root.Children.Add(qr);
+
         root.Children.Add(Head("Verhalten"));
         foreach (var c in new[] { openEditor, saveOnClose, copy, autostart })
         {
@@ -142,7 +154,12 @@ internal class SettingsWindow : Window
         autostart.IsChecked = GetAutostart();
         checkUpd.IsChecked = s.CheckUpdates;
 
-        foreach (var t in new[] { region, full, win, scroll, picker, magnifier, rulerKey }) t.PreviewKeyDown += HotkeyKey;
+        foreach (var t in new[] { region, full, win, scroll, picker, magnifier, rulerKey })
+        {
+            t.PreviewKeyDown += HotkeyKey;
+            t.GotKeyboardFocus += HotkeyFocus;
+            t.LostKeyboardFocus += HotkeyBlur;
+        }
         ok.Click += (_, _) => Apply();
     }
 
@@ -159,6 +176,35 @@ internal class SettingsWindow : Window
         return g;
     }
 
+    const string Prompt = "▶ Jetzt Tastenkombination drücken …";
+    readonly Dictionary<TextBox, string> prevText = new();
+
+    void HotkeyFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        var b = (TextBox)sender;
+        if (b.Text != Prompt) prevText[b] = b.Text;
+        b.Text = Prompt;
+        b.BorderBrush = new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5));
+        b.BorderThickness = new Thickness(2);
+        b.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xD5, 0x4F));
+        b.FontStyle = FontStyles.Italic;
+    }
+
+    void ResetHotkeyStyle(TextBox b)
+    {
+        b.BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55));
+        b.BorderThickness = new Thickness(1);
+        b.Foreground = Brushes.White;
+        b.FontStyle = FontStyles.Normal;
+    }
+
+    void HotkeyBlur(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        var b = (TextBox)sender;
+        if (b.Text == Prompt) b.Text = prevText.TryGetValue(b, out var old) ? old : "";   // nichts gedrückt: alten Wert behalten
+        ResetHotkeyStyle(b);
+    }
+
     void HotkeyKey(object sender, KeyEventArgs e)
     {
         e.Handled = true;
@@ -166,7 +212,8 @@ internal class SettingsWindow : Window
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or Key.LeftAlt or Key.RightAlt
             or Key.LWin or Key.RWin or Key.None or Key.ImeProcessed or Key.DeadCharProcessed) return;
-        if (key is Key.Delete or Key.Back) { box.Text = ""; return; }
+        if (key == Key.Escape) { box.Text = prevText.TryGetValue(box, out var o) ? o : ""; ResetHotkeyStyle(box); Focus(); return; }   // Abbrechen
+        if (key is Key.Delete or Key.Back) { box.Text = ""; prevText[box] = ""; ResetHotkeyStyle(box); Focus(); return; }
         if (key == Key.Tab) { box.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)); return; }
 
         var vk = KeyInterop.VirtualKeyFromKey(key);
@@ -177,6 +224,9 @@ internal class SettingsWindow : Window
         if (m.HasFlag(ModifierKeys.Shift)) parts.Add("Shift");
         parts.Add(((Forms.Keys)vk).ToString());
         box.Text = string.Join("+", parts);
+        prevText[box] = box.Text;
+        ResetHotkeyStyle(box);
+        Focus();   // Fokus weg vom Feld, damit der nächste Klick wieder die Aufforderung zeigt
     }
 
     static bool GetAutostart()
@@ -211,6 +261,7 @@ internal class SettingsWindow : Window
         var failed = app.RegisterAll();
         s.SaveFolder = string.IsNullOrWhiteSpace(folder.Text) ? s.SaveFolder : folder.Text.Trim();
         s.ImageFormat = png.IsChecked == true ? "png" : "jpg";
+        s.JpgQuality = (int)quality.Value;
         s.CheckUpdates = checkUpd.IsChecked == true;
         s.OpenEditor = openEditor.IsChecked == true;
         s.SaveOnClose = saveOnClose.IsChecked == true;
