@@ -860,7 +860,7 @@ public partial class EditorWindow : Window
             if (editBox != null) { thick = e.NewValue; toolThick[Tool.Text] = thick; editBox.FontSize = 14 + thick * 2; return; }
             if (selected != null && ApplyThickness(selected, e.NewValue))
             {
-                if (ToolOf(selected) is Tool kind) toolThick[kind] = e.NewValue;   // eingestellte Stärke gilt für die nächsten Elemente dieser Art (diese Sitzung)
+                if (ToolOf(selected) is Tool kind) { toolThick[kind] = e.NewValue; if (tool == kind) thick = e.NewValue; }   // eingestellte Stärke gilt für die nächsten Elemente dieser Art (diese Sitzung)
                 UpdateSel(); return;
             }
             thick = e.NewValue;
