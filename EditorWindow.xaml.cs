@@ -785,8 +785,8 @@ public partial class EditorWindow : Window
         {
             ("Auswahl", Tool.Pointer, Geo("M6,3 L6,19 L10,15 L13,21 L15.5,20 L12.5,14 L18,14 Z", true)),
             ("Pfeil", Tool.Arrow, BuildArrowIcon()),
-            ("Linie", Tool.Line, Geo("M4,20 L20,4")),
             ("Rahmen", Tool.Rect, WithCorner(Geo("M4,6 H20 V18 H4 Z"))),
+            ("Linie", Tool.Line, Geo("M4,20 L20,4")),
             ("Stift", Tool.Pen, Geo("M3,17 C6,5 9,5 12,12 S18,19 21,7")),
             ("Marker", Tool.Marker, Glyph("\uE7E6")),
             ("Text", Tool.Text, Glyph("\uE8D2")),
