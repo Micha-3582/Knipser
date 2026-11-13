@@ -124,7 +124,7 @@ public partial class EditorWindow : Window
         startPanel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         double chrome = Math.Max(0, ActualWidth - Ribbon.ActualWidth);
         MinWidth = Math.Ceiling(startPanel.DesiredSize.Width + chrome + 6);
-        if (Width < MinWidth) Width = MinWidth;
+        if (Width < MinWidth || Width > MinWidth + 40) Width = MinWidth + 6;   // Standardbreite = Menüband, nicht breiter
     }
 
     // ---------- Formen-Galerie (Rahmen-Werkzeug) ----------
@@ -796,6 +796,7 @@ public partial class EditorWindow : Window
         };
         var toolGroup = new List<UIElement>();
         var bildGroup = new List<UIElement>();
+        var formStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };   // Rahmen und Ellipse untereinander (spart Breite)
         foreach (var (label, t, icon) in tools)
         {
             var rb = new RadioButton { Content = WithLabel(icon, label), GroupName = "tools", Style = (Style)FindResource("RibbonTool"), IsChecked = t == tool, ToolTip = label };
@@ -813,13 +814,22 @@ public partial class EditorWindow : Window
                 Art.Cursor = tt == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
                 if (tt == Tool.Crop) StartCrop();
             };
+            if (t == Tool.Rect || t == Tool.Ellipse)
+            {
+                var row = new StackPanel { Orientation = Orientation.Horizontal };
+                row.Children.Add(new Viewbox { Width = 20, Height = 18, Child = icon });
+                row.Children.Add(new TextBlock { Text = label, FontSize = 11.5, Foreground = Ink, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
+                rb.Content = row; rb.HorizontalContentAlignment = HorizontalAlignment.Left; rb.MinWidth = 82;
+            }
             toolButtons[t] = rb;
             if (t == Tool.Arrow) HookArrowMenu(rb);
             if (t == Tool.Rect) HookGalleryMenu(rb);
             if (t == Tool.Fill) HookListMenu(rb, FillNames, () => settings.FillMode, v => settings.FillMode = v);
             if (t == Tool.Blur) HookShapeMenu(rb, () => settings.BlurShape, v => settings.BlurShape = v, () => settings.BlurEdge, v => settings.BlurEdge = v);
             if (t == Tool.Soften) HookShapeMenu(rb, () => settings.SoftenShape, v => settings.SoftenShape = v, () => settings.SoftenEdge, v => settings.SoftenEdge = v);
-            (t == Tool.Crop || t == Tool.Fill ? bildGroup : toolGroup).Add(rb);
+            if (t == Tool.Rect) { formStack.Children.Add(rb); toolGroup.Add(formStack); }
+            else if (t == Tool.Ellipse) formStack.Children.Add(rb);
+            else (t == Tool.Crop || t == Tool.Fill ? bildGroup : toolGroup).Add(rb);
         }
 
         panels["Start"].Children.Add(Group("Bild", bildGroup.ToArray()));
