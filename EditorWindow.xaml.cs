@@ -1112,6 +1112,7 @@ public partial class EditorWindow : Window
             return;
         }
         if (cropDrag >= 8) { CropMove(p); return; }
+        if (cropMode && cropDrag < 0) Art.Cursor = cropRect.Contains(p) ? Cursors.SizeAll : Cursors.Cross;   // Innenbereich = verschiebbar
         if (dragEl != null)
         {
             var t = GetT(dragEl);
@@ -2513,7 +2514,7 @@ public partial class EditorWindow : Window
         }
         if (cropApplyBtn != null) cropApplyBtn.Visibility = Visibility.Visible;
         if (cropCancelBtn != null) cropCancelBtn.Visibility = Visibility.Visible;
-        Status.Text = "Zuschneiden: Anfasser an Rand und Ecken nach innen ziehen · Enter = anwenden · Esc = abbrechen";
+        Status.Text = "Zuschneiden: Anfasser ziehen = Größe ändern · Innenbereich ziehen = verschieben · Pfeiltasten = Feinjustage (Umschalt = 10 px) · Enter = anwenden · Esc = abbrechen";
         PositionCrop();
     }
 
@@ -2749,6 +2750,15 @@ public partial class EditorWindow : Window
         if (Keyboard.FocusedElement is TextBox) return;
         if (cropMode && e.Key == Key.Enter) { ApplyCropNow(); e.Handled = true; return; }
         if (cropMode && e.Key == Key.Escape) { CancelCrop(); e.Handled = true; return; }
+        if (cropMode && e.Key is Key.Left or Key.Right or Key.Up or Key.Down)
+        {
+            double step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 10 : 1;
+            double dx = e.Key == Key.Left ? -step : e.Key == Key.Right ? step : 0, dy = e.Key == Key.Up ? -step : e.Key == Key.Down ? step : 0;
+            cropRect = new Rect(Math.Clamp(cropRect.X + dx, 0, bmp.PixelWidth - cropRect.Width), Math.Clamp(cropRect.Y + dy, 0, bmp.PixelHeight - cropRect.Height), cropRect.Width, cropRect.Height);
+            PositionCrop();
+            e.Handled = true;
+            return;
+        }
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
         if (ctrl && e.Key == Key.Z) { Undo(); e.Handled = true; }
         else if (ctrl && e.Key == Key.Y) { Redo(); e.Handled = true; }
