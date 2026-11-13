@@ -166,13 +166,10 @@ public partial class EditorWindow : Window
         timer.Tick += (_, _) => { timer.Stop(); ShowGalleryMenu(rb); };
         rb.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            var pos = e.GetPosition(rb);
-            if (pos.X > rb.ActualWidth - 22 && pos.Y < 38) { ShowGalleryMenu(rb); e.Handled = true; return; }
             timer.Start();
         };
         rb.PreviewMouseLeftButtonUp += (_, _) => timer.Stop();
         rb.MouseLeave += (_, _) => timer.Stop();
-        rb.MouseRightButtonUp += (_, e) => { ShowGalleryMenu(rb); e.Handled = true; };
     }
 
     void ShowGalleryMenu(RadioButton target)
@@ -261,13 +258,10 @@ public partial class EditorWindow : Window
         timer.Tick += (_, _) => { timer.Stop(); ShowShapeMenu(rb, get, set, getEdge, setEdge); };
         rb.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            var pos = e.GetPosition(rb);
-            if (pos.X > rb.ActualWidth - 22 && pos.Y < 38) { ShowShapeMenu(rb, get, set, getEdge, setEdge); e.Handled = true; return; }
             timer.Start();
         };
         rb.PreviewMouseLeftButtonUp += (_, _) => timer.Stop();
         rb.MouseLeave += (_, _) => timer.Stop();
-        rb.MouseRightButtonUp += (_, e) => { ShowShapeMenu(rb, get, set, getEdge, setEdge); e.Handled = true; };
     }
 
     static readonly string[] EdgeNames = { "Harte Kante", "Weiche Kante" };
@@ -525,13 +519,10 @@ public partial class EditorWindow : Window
         timer.Tick += (_, _) => { timer.Stop(); ShowPickMenu(btn); };
         btn.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            var pos = e.GetPosition(btn);
-            if (pos.X > btn.ActualWidth - 22 && pos.Y < 38) { ShowPickMenu(btn); e.Handled = true; return; }
             timer.Start();
         };
         btn.PreviewMouseLeftButtonUp += (_, _) => timer.Stop();
         btn.MouseLeave += (_, _) => timer.Stop();
-        btn.MouseRightButtonUp += (_, e) => { ShowPickMenu(btn); e.Handled = true; };
         return btn;
     }
 
@@ -610,10 +601,28 @@ public partial class EditorWindow : Window
             SizeChanged += (_, _) => CloseAllPopups();
             StateChanged += (_, _) => CloseAllPopups();
             Deactivated += (_, _) => CloseAllPopups();
+            // Klick irgendwo im Editor außerhalb des Untermenüs schließt es (Klick selbst läuft normal weiter)
+            PreviewMouseDown += (_, e) =>
+            {
+                if (openPopups.Count == 0) return;
+                foreach (var pp in openPopups.ToArray())
+                    if (!IsInside(e.OriginalSource as DependencyObject, pp.Child)) pp.IsOpen = false;
+            };
         }
+        pop.StaysOpen = true;
         pop.Closed += (_, _) => openPopups.Remove(pop);
         openPopups.Add(pop);
         pop.IsOpen = true;
+    }
+
+    static bool IsInside(DependencyObject? d, DependencyObject? root)
+    {
+        while (d != null)
+        {
+            if (ReferenceEquals(d, root)) return true;
+            d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
+        }
+        return false;
     }
 
     void CloseAllPopups()
@@ -655,13 +664,10 @@ public partial class EditorWindow : Window
         timer.Tick += (_, _) => { timer.Stop(); ShowArrowMenu(rb); };
         rb.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            var pos = e.GetPosition(rb);
-            if (pos.X > rb.ActualWidth - 22 && pos.Y < 38) { ShowArrowMenu(rb); e.Handled = true; return; }   // kleine Ecke am Symbol
             timer.Start();
         };
         rb.PreviewMouseLeftButtonUp += (_, _) => timer.Stop();
         rb.MouseLeave += (_, _) => timer.Stop();
-        rb.MouseRightButtonUp += (_, e) => { ShowArrowMenu(rb); e.Handled = true; };
     }
 
     void ShowArrowMenu(FrameworkElement target)
@@ -2341,13 +2347,10 @@ public partial class EditorWindow : Window
         timer.Tick += (_, _) => { timer.Stop(); ShowListMenu(rb, names, get, set); };
         rb.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            var pos = e.GetPosition(rb);
-            if (pos.X > rb.ActualWidth - 22 && pos.Y < 38) { ShowListMenu(rb, names, get, set); e.Handled = true; return; }
             timer.Start();
         };
         rb.PreviewMouseLeftButtonUp += (_, _) => timer.Stop();
         rb.MouseLeave += (_, _) => timer.Stop();
-        rb.MouseRightButtonUp += (_, e) => { ShowListMenu(rb, names, get, set); e.Handled = true; };
     }
 
     void ShowListMenu(RadioButton target, string[] names, Func<int> get, Action<int> set)
