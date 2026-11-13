@@ -128,7 +128,7 @@ public partial class EditorWindow : Window
     }
 
     // ---------- Formen-Galerie (Rahmen-Werkzeug) ----------
-    static readonly string[] FormNames = { "Rechteck", "Abgerundetes Rechteck", "Dreieck", "Raute", "Sechseck", "Stern", "Sprechblase" };
+    static readonly string[] FormNames = { "Rechteck", "Abgerundetes Rechteck", "Dreieck", "Raute", "Sechseck", "Stern", "Sprechblase", "Ellipse" };
     static readonly string[] FormIcons =
     {
         "M5,6 H19 V18 H5 Z",
@@ -138,6 +138,7 @@ public partial class EditorWindow : Window
         "M8,5 H16 L21,12 L16,19 H8 L3,12 Z",
         "M12,3 L14.6,9.2 L21.3,9.7 L16.2,14 L17.8,20.5 L12,17 L6.2,20.5 L7.8,14 L2.7,9.7 L9.4,9.2 Z",
         "M6,5 H18 Q20,5 20,7 V13 Q20,15 18,15 H11 L7,19 V15 H6 Q4,15 4,13 V7 Q4,5 6,5 Z",
+        "M3,12 A9,6 0 1 0 21,12 A9,6 0 1 0 3,12",
     };
     // Umrisse im Einheitsquadrat 0..100 (werden beim Aufziehen auf die gewünschte Größe gestreckt)
     static readonly string[] FormGeos =
@@ -148,12 +149,14 @@ public partial class EditorWindow : Window
         "M25,0 L75,0 L100,50 L75,100 L25,100 L0,50 Z",
         "M50,0 L61.2,34.5 L97.6,34.5 L68.2,55.9 L79.4,90.5 L50,69.1 L20.6,90.5 L31.8,55.9 L2.4,34.5 L38.8,34.5 Z",
         "M10,0 H90 Q100,0 100,10 V70 Q100,80 90,80 H40 L22,100 L28,80 H10 Q0,80 0,70 V10 Q0,0 10,0 Z",
+        "",   // Ellipse (echtes Ellipse-Element)
     };
 
     UIElement MakeFormShape()
     {
         int id = Math.Clamp(settings.RectShape, 0, FormNames.Length - 1);
         if (id == 0) return new Rectangle { Stroke = Brush(), StrokeThickness = thick, Fill = Brushes.Transparent, RadiusX = 2, RadiusY = 2 };
+        if (id == 7) return new Ellipse { Stroke = Brush(), StrokeThickness = thick, Fill = Brushes.Transparent };
         if (id == 1) return new Rectangle { Stroke = Brush(), StrokeThickness = thick, Fill = Brushes.Transparent, RadiusX = 16, RadiusY = 16 };
         return new Path
         {
@@ -784,7 +787,6 @@ public partial class EditorWindow : Window
             ("Pfeil", Tool.Arrow, BuildArrowIcon()),
             ("Linie", Tool.Line, Geo("M4,20 L20,4")),
             ("Rahmen", Tool.Rect, WithCorner(Geo("M4,6 H20 V18 H4 Z"))),
-            ("Ellipse", Tool.Ellipse, Geo("M3,12 A9,6 0 1 0 21,12 A9,6 0 1 0 3,12")),
             ("Stift", Tool.Pen, Geo("M3,17 C6,5 9,5 12,12 S18,19 21,7")),
             ("Marker", Tool.Marker, Glyph("\uE7E6")),
             ("Text", Tool.Text, Glyph("\uE8D2")),
@@ -796,7 +798,6 @@ public partial class EditorWindow : Window
         };
         var toolGroup = new List<UIElement>();
         var bildGroup = new List<UIElement>();
-        var formStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };   // Rahmen und Ellipse untereinander (spart Breite)
         foreach (var (label, t, icon) in tools)
         {
             var rb = new RadioButton { Content = WithLabel(icon, label), GroupName = "tools", Style = (Style)FindResource("RibbonTool"), IsChecked = t == tool, ToolTip = label };
@@ -814,23 +815,13 @@ public partial class EditorWindow : Window
                 Art.Cursor = tt == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
                 if (tt == Tool.Crop) StartCrop();
             };
-            if (t == Tool.Rect || t == Tool.Ellipse)
-            {
-                if (rb.Content is Panel oldContent) oldContent.Children.Remove(icon);   // Icon darf nur an einer Stelle hängen
-                var row = new StackPanel { Orientation = Orientation.Horizontal };
-                row.Children.Add(new Viewbox { Width = 20, Height = 18, Child = icon });
-                row.Children.Add(new TextBlock { Text = label, FontSize = 11.5, Foreground = Ink, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
-                rb.Content = row; rb.HorizontalContentAlignment = HorizontalAlignment.Left; rb.MinWidth = 82;
-            }
             toolButtons[t] = rb;
             if (t == Tool.Arrow) HookArrowMenu(rb);
             if (t == Tool.Rect) HookGalleryMenu(rb);
             if (t == Tool.Fill) HookListMenu(rb, FillNames, () => settings.FillMode, v => settings.FillMode = v);
             if (t == Tool.Blur) HookShapeMenu(rb, () => settings.BlurShape, v => settings.BlurShape = v, () => settings.BlurEdge, v => settings.BlurEdge = v);
             if (t == Tool.Soften) HookShapeMenu(rb, () => settings.SoftenShape, v => settings.SoftenShape = v, () => settings.SoftenEdge, v => settings.SoftenEdge = v);
-            if (t == Tool.Rect) { formStack.Children.Add(rb); toolGroup.Add(formStack); }
-            else if (t == Tool.Ellipse) formStack.Children.Add(rb);
-            else (t == Tool.Crop || t == Tool.Fill ? bildGroup : toolGroup).Add(rb);
+            (t == Tool.Crop || t == Tool.Fill ? bildGroup : toolGroup).Add(rb);
         }
 
         panels["Start"].Children.Add(Group("Bild", bildGroup.ToArray()));
@@ -1880,7 +1871,7 @@ public partial class EditorWindow : Window
         Path { Tag: LineInfo li } => li.Arrow ? Tool.Arrow : Tool.Line,
         TextBlock => Tool.Text,
         Grid g when NumberText(g) != null => Tool.Number,
-        Ellipse => Tool.Ellipse,
+        Ellipse => Tool.Rect,   // Ellipse gehört zur Formen-Galerie (Rahmen)
         Polyline => Tool.Pen,
         Rectangle or Path => Tool.Rect,
         _ => null,
