@@ -915,12 +915,55 @@ public partial class EditorWindow : Window
     }
 
     // ---------- Hilfen ----------
+    /// <summary>Verschiebung eines Elements (liegt entweder allein oder als dritter Teil der Spiegeln/Drehen/Verschieben-Gruppe).</summary>
     static TranslateTransform GetT(UIElement el)
     {
         if (el.RenderTransform is TranslateTransform t) return t;
+        if (el.RenderTransform is TransformGroup g && g.Children.Count == 3 && g.Children[2] is TranslateTransform gt) return gt;
         t = new TranslateTransform();
         el.RenderTransform = t;
         return t;
+    }
+
+    /// <summary>Gruppe aus Spiegeln (um die Mitte), Drehen (um die Mitte) und Verschieben anlegen bzw. holen.</summary>
+    static TransformGroup EnsureGroup(UIElement el)
+    {
+        if (el.RenderTransform is TransformGroup g && g.Children.Count == 3) return g;
+        var t = el.RenderTransform is TranslateTransform tt ? tt : new TranslateTransform();
+        g = new TransformGroup();
+        g.Children.Add(new ScaleTransform(1, 1));
+        g.Children.Add(new RotateTransform(0));
+        g.Children.Add(t);
+        el.RenderTransformOrigin = new Point(0.5, 0.5);
+        el.RenderTransform = g;
+        return g;
+    }
+
+    static RotateTransform GetRot(UIElement el) => (RotateTransform)EnsureGroup(el).Children[1];
+    static ScaleTransform GetFlip(UIElement el) => (ScaleTransform)EnsureGroup(el).Children[0];
+
+    /// <summary>Position, Größe, Spiegelung und Drehung eines Elements (für Rückgängig).</summary>
+    readonly record struct RectState(Rect R, double Fx, double Fy, double Rot);
+
+    RectState GetState(UIElement el) => new(LocalRect(el), GetFlip(el).ScaleX, GetFlip(el).ScaleY, GetRot(el).Angle);
+
+    void ApplyState(UIElement el, RectState st)
+    {
+        var f = (FrameworkElement)el;
+        Canvas.SetLeft(el, st.R.X); Canvas.SetTop(el, st.R.Y);
+        f.Width = st.R.Width; f.Height = st.R.Height;
+        var g = EnsureGroup(el);
+        ((ScaleTransform)g.Children[0]).ScaleX = st.Fx; ((ScaleTransform)g.Children[0]).ScaleY = st.Fy;
+        ((RotateTransform)g.Children[1]).Angle = st.Rot;
+        PositionSel();
+    }
+
+    /// <summary>Eckpunkte des Elements im Bild (nach Spiegeln/Drehen/Verschieben), Reihenfolge: links oben, rechts oben, rechts unten, links unten.</summary>
+    Point[] WorldCorners(UIElement el)
+    {
+        var f = (FrameworkElement)el;
+        var m = el.TransformToVisual(Art);
+        return new[] { m.Transform(new Point(0, 0)), m.Transform(new Point(f.Width, 0)), m.Transform(new Point(f.Width, f.Height)), m.Transform(new Point(0, f.Height)) };
     }
 
     SolidColorBrush Brush(byte alpha = 255) => new(Color.FromArgb(alpha, color.R, color.G, color.B));
@@ -991,6 +1034,7 @@ public partial class EditorWindow : Window
 
         var hit = FindEl(e.OriginalSource);
         if (tool == Tool.Pointer && e.ClickCount == 2 && hit is TextBlock tbHit) { StartEdit(tbHit); return; }
+        if (tool == Tool.Pointer && selected != null && InRotateZone(p0)) { StartRotate(p0); return; }
         if (tool == Tool.Pointer || Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
             dragEl = hit;
@@ -1073,6 +1117,9 @@ public partial class EditorWindow : Window
             PositionSel();
             return;
         }
+        if (rotating) { MoveRotate(p); return; }
+        if (!drawing && tool == Tool.Pointer && !picking && cpWin == null && dragEl == null)
+            Art.Cursor = InRotateZone(p) ? RotateCursor() : Cursors.Arrow;
         if (!drawing || cur == null) return;
         bool sh = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
         switch (cur)
@@ -1101,6 +1148,7 @@ public partial class EditorWindow : Window
     void Art_Up(object sender, MouseButtonEventArgs e)
     {
         Art.ReleaseMouseCapture();
+        if (rotating) { EndRotate(); return; }
         if (cropDrag >= 8) { CropUp(); return; }
         if (dragEl != null)
         {
@@ -1165,6 +1213,97 @@ public partial class EditorWindow : Window
         toolButtons[Tool.Pointer].IsChecked = true;   // danach gleich wieder Auswahl: Element lässt sich verschieben/umfärben
     }
 
+    // ---------- Drehen (an der Ecke außerhalb anfassen) ----------
+    Cursor? rotateCursor;
+
+    Cursor RotateCursor()
+    {
+        if (rotateCursor != null) return rotateCursor;
+        try
+        {
+            Path Arc(Brush b, double thick)
+            {
+                var path = new Path { Stroke = b, StrokeThickness = thick, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round };
+                path.Data = Geometry.Parse("M24,16 A8,8 0 1 1 16,8 M16,8 L21,4 M16,8 L21,12");
+                return path;
+            }
+            var grid = new Grid { Width = 32, Height = 32 };
+            grid.Children.Add(Arc(Brushes.Black, 5));
+            grid.Children.Add(Arc(Brushes.White, 2.2));
+            grid.Measure(new Size(32, 32)); grid.Arrange(new Rect(0, 0, 32, 32));
+            var rtb = new RenderTargetBitmap(32, 32, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(grid);
+            var enc = new PngBitmapEncoder();
+            enc.Frames.Add(BitmapFrame.Create(rtb));
+            using var png = new MemoryStream();
+            enc.Save(png);
+            var data = png.ToArray();
+            using var cur = new MemoryStream();
+            using (var w = new BinaryWriter(cur, System.Text.Encoding.UTF8, true))
+            {
+                w.Write((short)0); w.Write((short)2); w.Write((short)1);
+                w.Write((byte)32); w.Write((byte)32); w.Write((byte)0); w.Write((byte)0);
+                w.Write((short)16); w.Write((short)16);
+                w.Write(data.Length); w.Write(22);
+                w.Write(data);
+            }
+            cur.Position = 0;
+            rotateCursor = new Cursor(cur);
+        }
+        catch { rotateCursor = Cursors.Hand; }
+        return rotateCursor!;
+    }
+
+    /// <summary>Liegt der Punkt knapp außerhalb einer Ecke des ausgewählten Elements (Dreh-Zone)?</summary>
+    bool InRotateZone(Point p)
+    {
+        if (selected == null || !IsRectLike(selected) || cropMode) return false;
+        var f = (FrameworkElement)selected;
+        double z = Zoom.ScaleX;
+        var m = selected.TransformToVisual(Art);
+        var inv = m.Inverse;
+        if (inv == null) return false;
+        var lp = inv.Transform(p);
+        if (lp.X >= -2 && lp.X <= f.Width + 2 && lp.Y >= -2 && lp.Y <= f.Height + 2) return false;
+        foreach (var c in WorldCorners(selected))
+        {
+            double d = (p - c).Length;
+            if (d > 6 / z && d < 32 / z) return true;
+        }
+        return false;
+    }
+
+    void StartRotate(Point p)
+    {
+        rotating = true; rotEl = selected;
+        var f = (FrameworkElement)selected!;
+        var cw = selected!.TransformToVisual(Art).Transform(new Point(f.Width / 2, f.Height / 2));
+        rotCenter = cw;
+        rotAng0 = Math.Atan2(p.Y - cw.Y, p.X - cw.X) * 180 / Math.PI;
+        rot0 = GetRot(selected).Angle;
+        stBefore = GetState(selected);
+        Art.CaptureMouse();
+    }
+
+    void MoveRotate(Point p)
+    {
+        if (rotEl == null) return;
+        double a = Math.Atan2(p.Y - rotCenter.Y, p.X - rotCenter.X) * 180 / Math.PI;
+        double ang = rot0 + (a - rotAng0);
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) ang = Math.Round(ang / 15) * 15;
+        GetRot(rotEl).Angle = ang;
+        PositionSel();
+    }
+
+    void EndRotate()
+    {
+        rotating = false;
+        var el = rotEl; rotEl = null;
+        if (el == null) return;
+        var before = stBefore; var after = GetState(el);
+        if (before != after) Push(() => ApplyState(el, before), () => ApplyState(el, after));
+    }
+
     // ---------- Reihenfolge (Ebenen) ----------
     /// <summary>Ausgewähltes Element in der Stapelreihenfolge verschieben. 0 = ganz vor, 1 = ganz zurück, 2 = eine Ebene vor, 3 = eine zurück.</summary>
     void Reorder(int mode)
@@ -1191,6 +1330,10 @@ public partial class EditorWindow : Window
     sealed class LineInfo { public Point A, B; public bool Arrow; public int Style; }
 
     Rectangle? selBox;
+    Polygon? selPoly;
+    Point dragQ; double dragSx, dragSy;
+    RectState stBefore;
+    bool rotating; UIElement? rotEl; double rotAng0, rot0; Point rotCenter;
     readonly List<Rectangle> handles = new();
     int activeHandle = -1;
     Rect rectBefore;
@@ -1308,7 +1451,7 @@ public partial class EditorWindow : Window
         if (cropMode) return;
         Sel.Children.Clear();
         handles.Clear();
-        selBox = null;
+        selBox = null; selPoly = null;
         if (selected == null) return;
         Art.UpdateLayout();
         selBox = new Rectangle
@@ -1317,6 +1460,8 @@ public partial class EditorWindow : Window
             StrokeDashArray = new DoubleCollection { 3, 3 }, IsHitTestVisible = false,
         };
         Sel.Children.Add(selBox);
+        selPoly = new Polygon { Stroke = new SolidColorBrush(Color.FromRgb(0x42, 0xA5, 0xF5)), StrokeDashArray = new DoubleCollection { 3, 3 }, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+        Sel.Children.Add(selPoly);
         int n = IsRectLike(selected) || selected is TextBlock ? 4 : selected is Path { Tag: LineInfo } ? 2 : 0;
         for (int i = 0; i < n; i++)
         {
@@ -1337,7 +1482,13 @@ public partial class EditorWindow : Window
         {
             if (selected == null) return;
             activeHandle = idx;
-            if (IsRectLike(selected)) rectBefore = LocalRect(selected);
+            if (IsRectLike(selected))
+            {
+                stBefore = GetState(selected);
+                var wc = WorldCorners(selected);
+                dragQ = wc[(idx + 2) % 4];
+                dragSx = idx is 1 or 2 ? 1 : -1; dragSy = idx is 2 or 3 ? 1 : -1;
+            }
             else if (selected is TextBlock stb) { textRect0 = new Rect(Canvas.GetLeft(stb), Canvas.GetTop(stb), stb.ActualWidth, stb.ActualHeight); textFs0 = stb.FontSize; }
             else if (selected is Path { Tag: LineInfo li }) lineBefore = new LineInfo { A = li.A, B = li.B, Arrow = li.Arrow, Style = li.Style };
             h.CaptureMouse();
@@ -1363,6 +1514,22 @@ public partial class EditorWindow : Window
         if (cropMode) { PositionCrop(); return; }
         if (selected == null || selBox == null) return;
         double z = Zoom.ScaleX, hs = 10 / z;
+        if (IsRectLike(selected) && selPoly != null)
+        {
+            Art.UpdateLayout();
+            var wc = WorldCorners(selected);
+            selBox.Visibility = Visibility.Collapsed;
+            selPoly.Visibility = Visibility.Visible;
+            selPoly.StrokeThickness = 1 / z;
+            selPoly.Points = new PointCollection(wc);
+            for (int i = 0; i < handles.Count && i < 4; i++)
+            {
+                var h = handles[i];
+                h.Width = h.Height = hs; h.StrokeThickness = 1.5 / z;
+                Canvas.SetLeft(h, wc[i].X - hs / 2); Canvas.SetTop(h, wc[i].Y - hs / 2);
+            }
+            return;
+        }
         Rect b;
         try { b = selected.TransformToVisual(Art).TransformBounds(VisualTreeHelper.GetDescendantBounds(selected)); }
         catch { return; }
@@ -1393,10 +1560,21 @@ public partial class EditorWindow : Window
         var lp = new Point(p.X - t.X, p.Y - t.Y);
         if (IsRectLike(selected))
         {
-            var opp = Corners(rectBefore)[(i + 2) % 4];
-            var nr = new Rect(lp, opp);
-            if (nr.Width < 4 || nr.Height < 4) return;
-            SetRect(selected, nr);
+            // gegenüberliegende Ecke bleibt im Bild stehen; über sie hinaus ziehen spiegelt das Element
+            var g = EnsureGroup(selected);
+            var rot = (RotateTransform)g.Children[1]; var tr = (TranslateTransform)g.Children[2];
+            double th = rot.Angle * Math.PI / 180, c = Math.Cos(th), sn = Math.Sin(th);
+            double vx = p.X - dragQ.X, vy = p.Y - dragQ.Y;
+            double dx = vx * c + vy * sn, dy = -vx * sn + vy * c;
+            double nw = Math.Abs(dx), nh = Math.Abs(dy);
+            if (nw < 4 || nh < 4) return;
+            double fx = (dx < 0 ? -1 : 1) * dragSx, fy = (dy < 0 ? -1 : 1) * dragSy;
+            var f = (FrameworkElement)selected;
+            f.Width = nw; f.Height = nh;
+            ((ScaleTransform)g.Children[0]).ScaleX = fx; ((ScaleTransform)g.Children[0]).ScaleY = fy;
+            var cx = (p.X + dragQ.X) / 2; var cy = (p.Y + dragQ.Y) / 2;
+            Canvas.SetLeft(selected, cx - nw / 2 - tr.X); Canvas.SetTop(selected, cy - nh / 2 - tr.Y);
+            PositionSel();
         }
         else if (selected is TextBlock tb)
         {
@@ -1438,8 +1616,8 @@ public partial class EditorWindow : Window
         if (el == null) return;
         if (IsRectLike(el))
         {
-            var before = rectBefore; var after = LocalRect(el);
-            if (before != after) Push(() => SetRect(el, before), () => SetRect(el, after));
+            var before = stBefore; var after = GetState(el);
+            if (before != after) Push(() => ApplyState(el, before), () => ApplyState(el, after));
         }
         else if (el is TextBlock tb)
         {
