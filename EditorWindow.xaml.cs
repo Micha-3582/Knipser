@@ -1937,9 +1937,9 @@ public partial class EditorWindow : Window
         prevTimer.Start();
     }
 
-    bool IsPng => settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
+    bool IsPng => settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase) || settings.ImageFormat.Equals("webp", StringComparison.OrdinalIgnoreCase);   // Formate mit Transparenz (PNG, WebP)
 
-    /// <summary>Bild mit Rahmen (rund auf Wunsch). Außen transparent (PNG) oder weiß (JPG).</summary>
+    /// <summary>Bild mit Rahmen (rund auf Wunsch). Außen transparent (PNG, WebP) oder weiß (JPG).</summary>
     BitmapSource BuildFrame(BitmapSource old, int b, Color color, int radius)
     {
         int iw = old.PixelWidth, ih = old.PixelHeight, W = iw + 2 * b, H = ih + 2 * b;

@@ -323,7 +323,7 @@ internal class CanvasDialog : DarkDialog
         Body.Children.Add(new TextBlock { Text = $"Aktuell: {w} × {h} Pixel. Rand hinzufügen (Pixel):", Foreground = Brushes.Gray, Margin = new Thickness(0, 0, 0, 6) });
         l.Text = t.Text = r.Text = b.Text = "50";
         Body.Children.Add(Line("Links", l)); Body.Children.Add(Line("Oben", t)); Body.Children.Add(Line("Rechts", r)); Body.Children.Add(Line("Unten", b));
-        foreach (var n in new[] { "Weiß", "Schwarz", "Transparent (nur PNG)", "Aktuelle Farbe" }) fill.Items.Add(n);
+        foreach (var n in new[] { "Weiß", "Schwarz", "Transparent (PNG, WebP)", "Aktuelle Farbe" }) fill.Items.Add(n);
         fill.SelectedIndex = 0;
         Body.Children.Add(Line("Füllung", fill));
     }
