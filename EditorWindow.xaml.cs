@@ -1547,6 +1547,7 @@ public partial class EditorWindow : Window
         b.Inflate(3 / z, 3 / z);
         Canvas.SetLeft(selBox, b.X); Canvas.SetTop(selBox, b.Y);
         selBox.Width = b.Width; selBox.Height = b.Height; selBox.StrokeThickness = 1 / z;
+        selBox.Visibility = selected is Path { Tag: LineInfo } ? Visibility.Collapsed : Visibility.Visible;
 
         var t = GetT(selected);
         Point[]? pts = null;
