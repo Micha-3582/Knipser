@@ -61,8 +61,7 @@ internal class ColorPickerWindow : Window
         Loaded += (_, _) =>
         {
             if (Owner == null) return;
-            Left = Math.Max(0, Owner.Left + Owner.ActualWidth - ActualWidth - 24);
-            Top = Owner.Top + 165;
+            DarkDialog.PlaceInOwner(this, 165);
         };
 
         // --- Spektrumfläche (Sättigung nach rechts, Helligkeit nach oben) ---

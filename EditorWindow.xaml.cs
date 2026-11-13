@@ -805,6 +805,11 @@ public partial class EditorWindow : Window
                 CommitText();
                 if (cropMode && tt != Tool.Crop) EndCrop();
                 tool = tt;
+                if (tt != Tool.Pointer && tt != Tool.Crop && tt != Tool.Fill && thickSlider != null)
+                {
+                    thick = toolThick.TryGetValue(tt, out var tv) ? tv : defaultThick;
+                    syncing = true; thickSlider.Value = Math.Clamp(Math.Round(thick), 1, 20); syncing = false;
+                }
                 Art.Cursor = tt == Tool.Pointer ? Cursors.Arrow : Cursors.Cross;
                 if (tt == Tool.Crop) StartCrop();
             };
@@ -850,13 +855,14 @@ public partial class EditorWindow : Window
         slider.ValueChanged += (_, e) =>
         {
             if (syncing) return;
-            if (editBox != null) { thick = e.NewValue; editBox.FontSize = 14 + thick * 2; return; }
+            if (editBox != null) { thick = e.NewValue; toolThick[Tool.Text] = thick; editBox.FontSize = 14 + thick * 2; return; }
             if (selected != null && ApplyThickness(selected, e.NewValue))
             {
-                if (selected is Grid ng && NumberText(ng) != null) numThick = e.NewValue;   // gewählte Nummerngröße gilt für die nächsten Nummern
+                if (ToolOf(selected) is Tool kind) toolThick[kind] = e.NewValue;   // eingestellte Stärke gilt für die nächsten Elemente dieser Art (diese Sitzung)
                 UpdateSel(); return;
             }
             thick = e.NewValue;
+            if (tool != Tool.Pointer) toolThick[tool] = thick;
         };
         panels["Start"].Children.Add(Group("Stärke", new Border { Padding = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, Child = slider }));
 
@@ -1854,12 +1860,25 @@ public partial class EditorWindow : Window
         catch { }
     }
 
-    double numThick = double.NaN;   // zuletzt eingestellte Nummerngröße (für diese Sitzung)
+    readonly Dictionary<Tool, double> toolThick = new();   // zuletzt eingestellte Stärke je Werkzeug (nur diese Sitzung)
+    readonly double defaultThick = 4;
+
+    /// <summary>Zu welchem Werkzeug gehört ein vorhandenes Element (für die gemerkte Stärke)?</summary>
+    static Tool? ToolOf(UIElement el) => el switch
+    {
+        Path { Tag: LineInfo li } => li.Arrow ? Tool.Arrow : Tool.Line,
+        TextBlock => Tool.Text,
+        Grid g when NumberText(g) != null => Tool.Number,
+        Ellipse => Tool.Ellipse,
+        Polyline => Tool.Pen,
+        Rectangle or Path => Tool.Rect,
+        _ => null,
+    };
 
     void AddNumber(Point p)
     {
         int n = NextFreeNumber();
-        double d = 22 + (double.IsNaN(numThick) ? thick : numThick) * 2;
+        double d = 22 + thick * 2;
         var g = new Grid { Width = d, Height = d };
         var onCol = new SolidColorBrush(OnColor(color));
         g.Children.Add(new Ellipse { Fill = Brush(), Stroke = onCol, StrokeThickness = 2 });

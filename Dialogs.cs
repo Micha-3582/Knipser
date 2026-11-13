@@ -29,6 +29,19 @@ internal abstract class DarkDialog : Window
         Ok.Click += (_, _) => { DialogResult = true; };
     }
 
+    /// <summary>Fenster rechts im Editor platzieren und immer komplett innerhalb des Editors halten (auch bei maximiertem Fenster; Window.Left/Top sind dann unzuverlässig).</summary>
+    internal static void PlaceInOwner(Window w, double topOffset)
+    {
+        if (w.Owner == null) return;
+        var src = PresentationSource.FromVisual(w.Owner);
+        var topLeft = w.Owner.PointToScreen(new Point(0, 0));
+        if (src?.CompositionTarget != null) topLeft = src.CompositionTarget.TransformFromDevice.Transform(topLeft);
+        double ow = w.Owner.ActualWidth, oh = w.Owner.ActualHeight;
+        double ww = w.ActualWidth, wh = w.ActualHeight;
+        w.Left = Math.Max(topLeft.X, topLeft.X + ow - ww - 24);
+        w.Top = Math.Max(topLeft.Y, Math.Min(topLeft.Y + topOffset, topLeft.Y + oh - wh));
+    }
+
     /// <summary>Dialog an den rechten Rand des Editors setzen, damit das Bild (Live-Vorschau) sichtbar bleibt.</summary>
     protected void PlaceRight()
     {
@@ -36,8 +49,7 @@ internal abstract class DarkDialog : Window
         Loaded += (_, _) =>
         {
             if (Owner == null) return;
-            Left = Owner.Left + Owner.ActualWidth - ActualWidth - 24;
-            Top = Owner.Top + 150;
+            PlaceInOwner(this, 150);
         };
     }
 
