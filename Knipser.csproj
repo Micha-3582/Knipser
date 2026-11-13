@@ -11,7 +11,7 @@
     <RootNamespace>Knipser</RootNamespace>
     <NoWarn>WFAC010</NoWarn>
     <ApplicationIcon>Knipser.ico</ApplicationIcon>
-    <Version>1.28.2</Version>
+    <Version>1.28.3</Version>
     <SatelliteResourceLanguages>de</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>

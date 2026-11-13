@@ -252,7 +252,14 @@ internal class SettingsWindow : Window
         pInfo.Children.Add(updText);
         updBtn.Click += async (_, _) => await UpdateClick();
         if (app.PendingUpdate != null) ShowPending(app.PendingUpdate);
-        pInfo.Children.Add(new TextBlock { Text = "Knipser ist ein freies Screenshot-Programm für Windows.\nEntwickelt von Michael Arthen.\nQuelltext und Downloads: github.com/Micha-3582/Knipser", Foreground = Brushes.Gray, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 0) });
+        var about = new TextBlock { Foreground = Brushes.Gray, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 0) };
+        about.Inlines.Add(new System.Windows.Documents.Run("Knipser ist ein freies Screenshot-Programm für Windows.\nEntwickelt von Michael Arthen.\nQuelltext und Downloads: "));
+        var gh = new System.Windows.Documents.Run("github.com/Micha-3582/Knipser") { Foreground = new SolidColorBrush(Color.FromRgb(0x4F, 0xA3, 0xF0)), Cursor = System.Windows.Input.Cursors.Hand, TextDecorations = null };
+        gh.MouseEnter += (_, _) => gh.Foreground = Brushes.White;
+        gh.MouseLeave += (_, _) => gh.Foreground = new SolidColorBrush(Color.FromRgb(0x4F, 0xA3, 0xF0));
+        gh.MouseLeftButtonUp += (_, _) => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/Micha-3582/Knipser") { UseShellExecute = true }); } catch { } };
+        about.Inlines.Add(gh);
+        pInfo.Children.Add(about);
 
         // ---------- Seitenleiste ----------
         var side = new StackPanel();
