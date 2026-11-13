@@ -252,9 +252,7 @@ internal class SettingsWindow : Window
         pInfo.Children.Add(updText);
         updBtn.Click += async (_, _) => await UpdateClick();
         if (app.PendingUpdate != null) ShowPending(app.PendingUpdate);
-        pInfo.Children.Add(new TextBlock { Text = "Knipser ist ein freies Screenshot-Programm für Windows.
-Entwickelt von Michael Arthen.
-Quelltext und Downloads: github.com/Micha-3582/Knipser", Foreground = Brushes.Gray, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 0) });
+        pInfo.Children.Add(new TextBlock { Text = "Knipser ist ein freies Screenshot-Programm für Windows.\nEntwickelt von Michael Arthen.\nQuelltext und Downloads: github.com/Micha-3582/Knipser", Foreground = Brushes.Gray, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 0) });
 
         // ---------- Seitenleiste ----------
         var side = new StackPanel();
