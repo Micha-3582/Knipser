@@ -966,6 +966,9 @@ public partial class EditorWindow : Window
         return new[] { m.Transform(new Point(0, 0)), m.Transform(new Point(f.Width, 0)), m.Transform(new Point(f.Width, f.Height)), m.Transform(new Point(0, f.Height)) };
     }
 
+    /// <summary>Schwarz oder Weiß, je nachdem, was auf der Farbe besser lesbar ist.</summary>
+    static Color OnColor(Color c) => 0.299 * c.R + 0.587 * c.G + 0.114 * c.B > 150 ? Colors.Black : Colors.White;
+
     SolidColorBrush Brush(byte alpha = 255) => new(Color.FromArgb(alpha, color.R, color.G, color.B));
 
     void Push(Action undo, Action redo)
@@ -1387,11 +1390,11 @@ public partial class EditorWindow : Window
                 redo = () => tb.Foreground = Full();
                 break;
             }
-            case Grid g when g.Children.Count == 2 && g.Children[0] is Ellipse e:   // Nummer
+            case Grid g when g.Children.Count == 2 && g.Children[0] is Ellipse e && g.Children[1] is TextBlock nt:   // Nummer: Schrift passt sich der Helligkeit an
             {
-                var of = e.Fill;
-                undo = () => e.Fill = of;
-                redo = () => e.Fill = Full();
+                var of = e.Fill; var os = e.Stroke; var ofg = nt.Foreground;
+                undo = () => { e.Fill = of; e.Stroke = os; nt.Foreground = ofg; };
+                redo = () => { e.Fill = Full(); var on = new SolidColorBrush(OnColor(c)); e.Stroke = on; nt.Foreground = on; };
                 break;
             }
         }
@@ -1806,8 +1809,9 @@ public partial class EditorWindow : Window
         int n = NextFreeNumber();
         double d = 22 + thick * 2;
         var g = new Grid { Width = d, Height = d };
-        g.Children.Add(new Ellipse { Fill = Brush(), Stroke = Brushes.White, StrokeThickness = 2 });
-        g.Children.Add(new TextBlock { Text = n.ToString(), Foreground = Brushes.White, FontWeight = FontWeights.Bold, FontSize = d * 0.5, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+        var onCol = new SolidColorBrush(OnColor(color));
+        g.Children.Add(new Ellipse { Fill = Brush(), Stroke = onCol, StrokeThickness = 2 });
+        g.Children.Add(new TextBlock { Text = n.ToString(), Foreground = onCol, FontWeight = FontWeights.Bold, FontSize = d * 0.5, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         Canvas.SetLeft(g, p.X - d / 2); Canvas.SetTop(g, p.Y - d / 2);
         Art.Children.Add(g);
         Push(() => Art.Children.Remove(g), () => Art.Children.Add(g));
