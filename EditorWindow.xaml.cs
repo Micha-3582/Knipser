@@ -816,6 +816,7 @@ public partial class EditorWindow : Window
             };
             if (t == Tool.Rect || t == Tool.Ellipse)
             {
+                if (rb.Content is Panel oldContent) oldContent.Children.Remove(icon);   // Icon darf nur an einer Stelle hängen
                 var row = new StackPanel { Orientation = Orientation.Horizontal };
                 row.Children.Add(new Viewbox { Width = 20, Height = 18, Child = icon });
                 row.Children.Add(new TextBlock { Text = label, FontSize = 11.5, Foreground = Ink, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
