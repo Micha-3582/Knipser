@@ -1804,6 +1804,23 @@ public partial class EditorWindow : Window
         return n;
     }
 
+    /// <summary>Verschiebt die Zahl so, dass die sichtbare Ziffernform (nicht der Textkasten) genau in der Mitte liegt.</summary>
+    void CenterInk(TextBlock tb)
+    {
+        try
+        {
+            var face = new Typeface(tb.FontFamily, tb.FontStyle, tb.FontWeight, tb.FontStretch);
+            var ft = new FormattedText(tb.Text, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, tb.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            var ink = ft.BuildGeometry(new Point(0, 0)).Bounds;
+            tb.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double bw = tb.DesiredSize.Width, bh = tb.DesiredSize.Height;
+            if (ink.IsEmpty) return;
+            double dx = bw / 2 - (ink.X + ink.Width / 2), dy = bh / 2 - (ink.Y + ink.Height / 2);
+            tb.RenderTransform = new TranslateTransform(dx, dy);
+        }
+        catch { }
+    }
+
     void AddNumber(Point p)
     {
         int n = NextFreeNumber();
@@ -1811,7 +1828,9 @@ public partial class EditorWindow : Window
         var g = new Grid { Width = d, Height = d };
         var onCol = new SolidColorBrush(OnColor(color));
         g.Children.Add(new Ellipse { Fill = Brush(), Stroke = onCol, StrokeThickness = 2 });
-        g.Children.Add(new TextBlock { Text = n.ToString(), Foreground = onCol, FontWeight = FontWeights.Bold, FontSize = d * 0.5, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+        var numText = new TextBlock { Text = n.ToString(), Foreground = onCol, FontWeight = FontWeights.Bold, FontSize = d * 0.5, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        CenterInk(numText);
+        g.Children.Add(numText);
         Canvas.SetLeft(g, p.X - d / 2); Canvas.SetTop(g, p.Y - d / 2);
         Art.Children.Add(g);
         Push(() => Art.Children.Remove(g), () => Art.Children.Add(g));
