@@ -50,6 +50,8 @@ public partial class EditorWindow : Window
         BuildToolbar();
         Loaded += (_, _) => { FitMinWidth(); FitZoom(); };
         PreviewKeyDown += OnKey;
+        PreviewKeyDown += (_, e) => { if (drawing && e.Key is Key.LeftShift or Key.RightShift) DrawUpdate(Mouse.GetPosition(Art)); };
+        PreviewKeyUp += (_, e) => { if (drawing && e.Key is Key.LeftShift or Key.RightShift) DrawUpdate(Mouse.GetPosition(Art)); };
         Closing += (_, _) =>
         {
             if (settings.SaveOnClose && !saved) QuickSave();
@@ -1130,6 +1132,12 @@ public partial class EditorWindow : Window
         if (rotating) { MoveRotate(p); return; }
         if (!drawing && tool == Tool.Pointer && !picking && cpWin == null && dragEl == null)
             Art.Cursor = InRotateZone(p) ? RotateCursor() : Cursors.Arrow;
+        DrawUpdate(p);
+    }
+
+    /// <summary>Aktuelles Zeichen-Element an die Mausposition anpassen (Shift = einrasten).</summary>
+    void DrawUpdate(Point p)
+    {
         if (!drawing || cur == null) return;
         bool sh = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
         switch (cur)
@@ -1424,17 +1432,28 @@ public partial class EditorWindow : Window
                 p.StrokeThickness = v; p.Data = ArrowGeo(li.A, li.B, li.Arrow, v, li.Style); return true;
             case Shape s when s.Stroke != null && (s.StrokeDashArray == null || s.StrokeDashArray.Count == 0) && s is Rectangle or Ellipse or Polyline or Path:
                 s.StrokeThickness = v; return true;
+            case Grid ng when NumberText(ng) is TextBlock nt:
+            {
+                double nd = 22 + v * 2, od = ng.Width;
+                if (double.IsNaN(od)) return false;
+                Canvas.SetLeft(ng, Canvas.GetLeft(ng) + (od - nd) / 2); Canvas.SetTop(ng, Canvas.GetTop(ng) + (od - nd) / 2);
+                ng.Width = ng.Height = nd; nt.FontSize = nd * 0.5; CenterInk(nt);
+                return true;
+            }
             case TextBlock tb:
                 tb.FontSize = 14 + v * 2; return true;
         }
         return false;
     }
 
+    static TextBlock? NumberText(Grid g) => g.Children.Count == 2 && g.Children[0] is Ellipse && g.Children[1] is TextBlock t ? t : null;
+
     static double? ThicknessOf(UIElement el) => el switch
     {
         Path p when p.Tag is LineInfo => p.StrokeThickness,
         Shape s when s.Stroke != null && (s.StrokeDashArray == null || s.StrokeDashArray.Count == 0) && s is Rectangle or Ellipse or Polyline or Path => s.StrokeThickness,
         TextBlock tb => (tb.FontSize - 14) / 2,
+        Grid ng when NumberText(ng) != null && !double.IsNaN(ng.Width) => (ng.Width - 22) / 2,
         _ => null,
     };
 
@@ -1601,6 +1620,7 @@ public partial class EditorWindow : Window
         }
         else if (selected is Path path && path.Tag is LineInfo li)
         {
+            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) lp = SnapAngle(i == 0 ? li.B : li.A, lp);
             if (i == 0) li.A = lp; else li.B = lp;
             path.Data = ArrowGeo(li.A, li.B, li.Arrow, path.StrokeThickness, li.Style);
             PositionSel();
@@ -1968,7 +1988,12 @@ public partial class EditorWindow : Window
 
         var mdv = new DrawingVisual();
         using (var dc = mdv.RenderOpen())
-            dc.DrawRoundedRectangle(Brushes.Black, null, new Rect(m + dx, m + dy, iw, ih), rr, rr);
+        {
+            // Schatten folgt der Form des Bildes (Alpha): abgerundete/transparente Ecken bekommen keinen eckigen Schatten
+            dc.PushClip(new RectangleGeometry(new Rect(m + dx, m + dy, iw, ih), rr, rr));
+            dc.DrawImage(old, new Rect(m + dx, m + dy, iw, ih));
+            dc.Pop();
+        }
         var mrt = new RenderTargetBitmap(W, H, 96, 96, PixelFormats.Pbgra32);
         mrt.Render(mdv);
         var mask = new byte[W * H * 4];
