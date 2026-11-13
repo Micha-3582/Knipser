@@ -181,7 +181,7 @@ public partial class EditorWindow : Window
     {
         var pop = new Popup { PlacementTarget = target, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true };
         var panel = new StackPanel();
-        for (int i = 0; i < FormNames.Length; i++)
+        foreach (int i in new[] { 0, 1, 7, 2, 3, 4, 5, 6 })   // Anzeigereihenfolge: Ellipse direkt unter dem abgerundeten Rechteck (Ids bleiben)
         {
             int id = i;
             var row = new StackPanel { Orientation = Orientation.Horizontal };
