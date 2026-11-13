@@ -851,7 +851,11 @@ public partial class EditorWindow : Window
         {
             if (syncing) return;
             if (editBox != null) { thick = e.NewValue; editBox.FontSize = 14 + thick * 2; return; }
-            if (selected != null && ApplyThickness(selected, e.NewValue)) { UpdateSel(); return; }
+            if (selected != null && ApplyThickness(selected, e.NewValue))
+            {
+                if (selected is Grid ng && NumberText(ng) != null) numThick = e.NewValue;   // gewählte Nummerngröße gilt für die nächsten Nummern
+                UpdateSel(); return;
+            }
             thick = e.NewValue;
         };
         panels["Start"].Children.Add(Group("Stärke", new Border { Padding = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, Child = slider }));
@@ -1850,10 +1854,12 @@ public partial class EditorWindow : Window
         catch { }
     }
 
+    double numThick = double.NaN;   // zuletzt eingestellte Nummerngröße (für diese Sitzung)
+
     void AddNumber(Point p)
     {
         int n = NextFreeNumber();
-        double d = 22 + thick * 2;
+        double d = 22 + (double.IsNaN(numThick) ? thick : numThick) * 2;
         var g = new Grid { Width = d, Height = d };
         var onCol = new SolidColorBrush(OnColor(color));
         g.Children.Add(new Ellipse { Fill = Brush(), Stroke = onCol, StrokeThickness = 2 });
