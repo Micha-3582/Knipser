@@ -883,7 +883,7 @@ public partial class EditorWindow : Window
         SizeText.Text = $"{b.PixelWidth} × {b.PixelHeight} px";
     }
 
-    const string Hint = "Elemente verschieben: Auswahl-Werkzeug oder Strg+Ziehen, Anfasser zum Ändern der Größe";
+    const string Hint = "Elemente verschieben: Auswahl-Werkzeug, Anfasser zum Ändern der Größe. Strg beim Loslassen gehalten: Werkzeug bleibt aktiv";
     bool zoomSync;
 
     void SetZoom(double z)
@@ -1044,7 +1044,7 @@ public partial class EditorWindow : Window
         var hit = FindEl(e.OriginalSource);
         if (tool == Tool.Pointer && e.ClickCount == 2 && hit is TextBlock tbHit) { StartEdit(tbHit); return; }
         if (tool == Tool.Pointer && selected != null && InRotateZone(p0)) { StartRotate(p0); return; }
-        if (tool == Tool.Pointer || Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        if (tool == Tool.Pointer)
         {
             dragEl = hit;
             Select(hit);
@@ -1175,6 +1175,7 @@ public partial class EditorWindow : Window
         var added = cur;
         cur = null;
         var p = e.GetPosition(Art);
+        bool keepTool = Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && tool != Tool.Crop;   // Strg gehalten: Werkzeug bleibt für das nächste Element
 
         bool tiny = added switch
         {
@@ -1203,7 +1204,7 @@ public partial class EditorWindow : Window
             Art.Children.Add(lpx);
             Push(() => Art.Children.Remove(lpx), () => Art.Children.Add(lpx));
             Select(lpx);
-            toolButtons[Tool.Pointer].IsChecked = true;
+            if (!keepTool) toolButtons[Tool.Pointer].IsChecked = true;
             return;
         }
         if ((tool == Tool.Blur || tool == Tool.Soften) && added is Shape bs)
@@ -1215,12 +1216,12 @@ public partial class EditorWindow : Window
             Art.Children.Add(px);
             Push(() => Art.Children.Remove(px), () => Art.Children.Add(px));
             Select(px);
-            toolButtons[Tool.Pointer].IsChecked = true;
+            if (!keepTool) toolButtons[Tool.Pointer].IsChecked = true;
             return;
         }
         Push(() => Art.Children.Remove(added), () => Art.Children.Add(added));
         Select(added);
-        toolButtons[Tool.Pointer].IsChecked = true;   // danach gleich wieder Auswahl: Element lässt sich verschieben/umfärben
+        if (!keepTool) toolButtons[Tool.Pointer].IsChecked = true;   // danach gleich wieder Auswahl: Element lässt sich verschieben/umfärben
     }
 
     // ---------- Drehen (an der Ecke außerhalb anfassen) ----------
