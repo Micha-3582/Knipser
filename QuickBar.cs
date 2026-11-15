@@ -114,7 +114,7 @@ internal class QuickBar : Window
             var h = new WindowInteropHelper(this).Handle;
             Native.SetWindowLong(h, Native.GWL_EXSTYLE, Native.GetWindowLong(h, Native.GWL_EXSTYLE) | Native.WS_EX_NOACTIVATE | Native.WS_EX_TOOLWINDOW);
         };
-        Loaded += (_, _) => { scale = VisualTreeHelper.GetDpi(this).DpiScaleX; Place(); poll.Start(); };
+        Loaded += (_, _) => { Place(true); poll.Start(); };
         poll.Tick += (_, _) => Tick();
         anim.Tick += Frame;
     }
@@ -130,18 +130,41 @@ internal class QuickBar : Window
         return Math.Clamp(o, -max, max);
     }
 
+    bool placed;
+
+    /// <summary>Setzt die Leiste in Pixeln an den oberen Rand des Hauptbildschirms (unabhängig von Skalierung und Windows-Startposition).</summary>
+    void PlaceWindow()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        var sb = Forms.Screen.PrimaryScreen!.Bounds;
+        bool full = t > 0;
+        // 1) erst auf den Hauptbildschirm holen, damit die richtige Skalierung gilt
+        Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, sb.X + sb.Width / 2, sb.Y, 0, 0, 0x0001 | Native.SWP_NOACTIVATE);   // SWP_NOSIZE
+        scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        Width = full ? BarW : HandleW;
+        Height = full ? BarH : HandleH;
+        // 2) dann mittig (plus Verschiebung) ganz oben
+        int x = (int)Math.Round(sb.X + (sb.Width - Width * scale) / 2 + offset * scale);
+        Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, x, sb.Y, 0, 0, 0x0001 | Native.SWP_NOACTIVATE);
+        wasFull = full; placed = true;
+    }
+
+    /// <summary>Sitzt das Fenster noch dort, wo es hingehört? (Windows oder andere Programme könnten es verschoben haben.)</summary>
+    bool PositionOk()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return true;
+        var sb = Forms.Screen.PrimaryScreen!.Bounds;
+        double w = r.Right - r.Left;
+        double x = sb.X + (sb.Width - w) / 2 + offset * scale;
+        return Math.Abs(r.Left - x) <= 2 && r.Top == sb.Y;
+    }
+
     void Place(bool reposition = false)
     {
         bool full = t > 0;
-        if (reposition || full != wasFull || Width == 0 || double.IsNaN(Left))
-        {
-            wasFull = full;
-            var sb = Forms.Screen.PrimaryScreen!.Bounds;
-            Width = full ? BarW : HandleW;
-            Height = full ? BarH : HandleH;
-            Left = sb.X / scale + (sb.Width / scale - Width) / 2 + offset;
-            Top = sb.Y / scale;
-        }
+        if (reposition || !placed || full != wasFull) PlaceWindow();
         double e = 1 - Math.Pow(1 - t, 3);          // weich abbremsen
         barMove.Y = -(1 - e) * BarH;
         barScale.ScaleX = 0.6 + 0.4 * e;
@@ -183,6 +206,7 @@ internal class QuickBar : Window
     void Tick()
     {
         if (suspended) return;
+        if (!dragging && placed && !PositionOk()) Place(true);
         var now = DateTime.UtcNow;
         if (!opening)
         {
@@ -237,6 +261,8 @@ internal class QuickBar : Window
         suspended = false;
         Show();
     }
+
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi) { base.OnDpiChanged(oldDpi, newDpi); Place(true); }
 
     protected override void OnClosed(EventArgs e) { poll.Stop(); anim.Stop(); base.OnClosed(e); }
 
