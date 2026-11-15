@@ -49,6 +49,37 @@ public partial class App : Application
                 "Tastenkürzel belegt (läuft evtl. noch ein anderes Screenshot-Programm?): " + string.Join(", ", failed),
                 Forms.ToolTipIcon.Warning);
         if (fileArg != null) Dispatcher.BeginInvoke(() => OpenFile(fileArg));
+        ApplyQuickBar();
+    }
+
+    // ---------- Schnellzugriffsleiste am oberen Bildschirmrand ----------
+    QuickBar? quickBar;
+
+    /// <summary>Erzeugt/entfernt die Schnellzugriffsleiste je nach Einstellung.</summary>
+    public void ApplyQuickBar()
+    {
+        if (Settings.QuickBar && quickBar == null)
+        {
+            quickBar = new QuickBar(new List<(string, Func<System.Windows.UIElement>, Action)?>
+            {
+                ("Bereich", QuickBar.IcRegion, CaptureRegion),
+                ("Fenster", QuickBar.IcWindow, CaptureWindow),
+                ("Vollbild", QuickBar.IcFull, CaptureFullscreen),
+                ("Scrollen", QuickBar.IcScroll, CaptureScroll),
+                ("Freihand", QuickBar.IcFree, CaptureFreehand),
+                null,
+                ("Pipette", QuickBar.IcPicker, () => PixelTool(PixelMode.Picker)),
+                ("Lupe", QuickBar.IcLoupe, () => PixelTool(PixelMode.Magnifier)),
+                ("Lineal", QuickBar.IcRuler, () => PixelTool(PixelMode.Ruler)),
+                null,
+                ("Einstellungen", QuickBar.IcGear, () => { ShowSettings(); quickBar?.Resume(); }),
+            });
+            quickBar.Show();
+        }
+        else if (!Settings.QuickBar && quickBar != null)
+        {
+            quickBar.Close(); quickBar = null;
+        }
     }
 
     const string PipeName = "Knipser.OpenFile";
@@ -320,6 +351,7 @@ public partial class App : Application
     {
         foreach (var w in hiddenEditors) { w.ShowActivated = false; w.Show(); w.ShowActivated = true; }
         hiddenEditors.Clear();
+        quickBar?.Resume();
     }
 
     async System.Threading.Tasks.Task Delay()

@@ -17,6 +17,8 @@ public class Settings
     /// <summary>WebP-Qualität 1–100.</summary>
     public int WebpQuality { get; set; } = 90;
     /// <summary>Beim Start still nach neuer Version suchen (kein Popup, nur Eintrag im Tray-Menü).</summary>
+    /// <summary>Schnellzugriffsleiste am oberen Bildschirmrand (fährt bei Mauskontakt heraus).</summary>
+    public bool QuickBar { get; set; } = true;
     public bool CheckUpdates { get; set; } = true;
     /// <summary>Sekunden Wartezeit vor der Aufnahme (0 = sofort).</summary>
     public int CaptureDelay { get; set; } = 0;
