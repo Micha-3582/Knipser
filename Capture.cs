@@ -61,6 +61,32 @@ internal static class Capture
     }
 
     /// <summary>Rechteck (in Pixeln) des Fensters unter dem Mauszeiger.</summary>
+    /// <summary>Das gerade aktive Fenster (vor dem Klick auf die Schnellleiste, die selbst nicht aktiviert wird). Null bei Desktop/Taskleiste.</summary>
+    public static IntPtr ActiveWindow()
+    {
+        var h = GetForegroundWindow();
+        if (h == IntPtr.Zero) return IntPtr.Zero;
+        var cls = new System.Text.StringBuilder(64);
+        GetClassName(h, cls, 64);
+        var c = cls.ToString();
+        if (c is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return IntPtr.Zero;
+        GetWindowThreadProcessId(h, out var pid);
+        return pid == Environment.ProcessId ? IntPtr.Zero : h;   // eigene Fenster (Schnellleiste, Hotkey-Fenster) nie fotografieren
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out int pid);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+
+    public static Rectangle? WindowRect(IntPtr h)
+    {
+        if (h == IntPtr.Zero) return null;
+        if (Native.DwmGetWindowAttribute(h, 9, out var r, 16) != 0 && !Native.GetWindowRect(h, out r)) return null;
+        var rect = Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom);
+        rect.Intersect(VirtualScreen);
+        return rect.Width > 1 && rect.Height > 1 ? rect : null;
+    }
+
     public static Rectangle? WindowUnderCursor()
     {
         if (!Native.GetCursorPos(out var p)) return null;

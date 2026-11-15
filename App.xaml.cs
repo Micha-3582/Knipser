@@ -63,7 +63,7 @@ public partial class App : Application
             quickBar = new QuickBar(new List<(string, Func<System.Windows.UIElement>, Action)?>
             {
                 ("Bereich", QuickBar.IcRegion, CaptureRegion),
-                ("Fenster", QuickBar.IcWindow, CaptureWindow),
+                ("Fenster", QuickBar.IcWindow, () => CaptureWindow(true)),
                 ("Vollbild", QuickBar.IcFull, CaptureFullscreen),
                 ("Scrollen", QuickBar.IcScroll, CaptureScroll),
                 ("Freihand", QuickBar.IcFree, CaptureFreehand),
@@ -155,7 +155,7 @@ public partial class App : Application
         var failed = new List<string>();
         Register(1, Settings.HotkeyRegion, CaptureRegion, failed);
         Register(2, Settings.HotkeyFullscreen, CaptureFullscreen, failed);
-        Register(3, Settings.HotkeyWindow, CaptureWindow, failed);
+        Register(3, Settings.HotkeyWindow, () => CaptureWindow(), failed);
         Register(4, Settings.HotkeyScroll, CaptureScroll, failed);
         Register(5, Settings.HotkeyPicker, () => PixelTool(PixelMode.Picker), failed);
         Register(6, Settings.HotkeyMagnifier, () => PixelTool(PixelMode.Magnifier), failed);
@@ -535,14 +535,16 @@ public partial class App : Application
         finally { busy = false; RestoreEditors(); }
     }
 
-    async void CaptureWindow()
+    /// <summary>Fenster fotografieren. Aus der Schnellleiste (activeWindow): das zuletzt aktive Fenster; sonst das unter dem Mauszeiger.</summary>
+    async void CaptureWindow(bool activeWindow = false)
     {
         if (busy) return;
         busy = true;
         try
         {
+            var active = activeWindow ? Capture.ActiveWindow() : IntPtr.Zero;
             await Delay();
-            var r = Capture.WindowUnderCursor();
+            var r = (active != IntPtr.Zero ? Capture.WindowRect(active) : null) ?? Capture.WindowUnderCursor();
             if (r is Rectangle rect) Finish(Capture.Grab(rect, Settings.IncludeCursor));
         }
         finally { busy = false; RestoreEditors(); }
