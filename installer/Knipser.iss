@@ -41,6 +41,7 @@ Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 [Tasks]
 Name: "autostart"; Description: "Knipser beim Anmelden automatisch starten"; GroupDescription: "Zusätzliche Optionen:"
 Name: "desktopicon"; Description: "Symbol auf dem Desktop anlegen"; GroupDescription: "Zusätzliche Optionen:"; Flags: unchecked
+Name: "contextmenu"; Description: "Im Rechtsklickmenü von Bildern „Mit Knipser bearbeiten“ anzeigen (Windows fragt dafür einmal nach der Administrator-Erlaubnis)"; GroupDescription: "Zusätzliche Optionen:"; Flags: unchecked
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "Knipser.exe"; Flags: ignoreversion
@@ -54,6 +55,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 
 [Run]
+; Rechtsklick-Eintrag im Explorer: braucht einmalig Administratorrechte (nur wenn angehakt und noch nicht gesetzt, daher fragt ein späteres Update nicht erneut)
+Filename: "{app}\Knipser.exe"; Parameters: "--menu-on"; Verb: "runas"; Flags: shellexec waituntilterminated; Tasks: contextmenu; Check: MenuNotSet; StatusMsg: "Rechtsklick-Eintrag wird eingerichtet..."
 Filename: "{app}\Knipser.exe"; Description: "Knipser jetzt starten"; Flags: nowait postinstall skipifsilent
 
 [Code]
@@ -76,4 +79,20 @@ function InitializeUninstall(): Boolean;
 begin
   KillKnipser();
   Result := True;
+end;
+
+const MenuKey = 'Software\Classes\SystemFileAssociations\.jpg\shell\Knipser\command';
+
+function MenuNotSet(): Boolean;
+begin
+  Result := not RegKeyExists(HKLM, MenuKey);
+end;
+
+// Bei der Deinstallation den Rechtsklick-Eintrag wieder entfernen (nur wenn vorhanden)
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  rc: Integer;
+begin
+  if (CurUninstallStep = usUninstall) and RegKeyExists(HKLM, MenuKey) then
+    ShellExec('runas', ExpandConstant('{app}\Knipser.exe'), '--menu-off', '', SW_HIDE, ewWaitUntilTerminated, rc);
 end;
