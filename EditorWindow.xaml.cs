@@ -125,9 +125,22 @@ public partial class EditorWindow : Window
     {
         if (startPanel == null) return;
         startPanel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        double chrome = Math.Max(0, ActualWidth - Ribbon.ActualWidth);
-        MinWidth = Math.Ceiling(startPanel.DesiredSize.Width + chrome + 6);
-        if (Width < MinWidth || Width > MinWidth + 40) Width = MinWidth + 6;   // Standardbreite = Menüband, nicht breiter
+        double chrome = Math.Max(0, ActualWidth - RibbonBox.ActualWidth);
+        double need = Math.Ceiling(startPanel.DesiredSize.Width + chrome + 6);
+
+        // Arbeitsbereich des Bildschirms, auf dem der Mauszeiger steht (ohne Taskleiste), in DIPs
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var wa = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position).WorkingArea;
+        double waL = wa.Left / dpi.DpiScaleX, waT = wa.Top / dpi.DpiScaleY, waW = wa.Width / dpi.DpiScaleX, waH = wa.Height / dpi.DpiScaleY;
+
+        // Nie größer als der Bildschirm: auf kleinen Auflösungen (z. B. 1280 × 800) scrollt das Menüband stattdessen seitlich
+        MinWidth = Math.Min(need, waW);
+        if (Width < MinWidth || Width > MinWidth + 40) Width = Math.Min(need + 6, waW);   // Standardbreite = Menüband, nicht breiter
+        if (Width > waW) Width = waW;
+        if (Height > waH) Height = waH;
+        // Mittig im Arbeitsbereich, nie über den Rand hinaus
+        Left = Math.Max(waL, waL + (waW - Width) / 2);
+        Top = Math.Max(waT, waT + (waH - Height) / 2);
     }
 
     // ---------- Formen-Galerie (Rahmen-Werkzeug) ----------

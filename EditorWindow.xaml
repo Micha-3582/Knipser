@@ -106,7 +106,9 @@
     </Window.Resources>
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="#202020">
-            <StackPanel x:Name="Ribbon"/>
+            <ScrollViewer x:Name="RibbonBox" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="Ribbon"/>
+            </ScrollViewer>
         </Border>
         <Border DockPanel.Dock="Bottom" Background="#262626" Padding="10,4">
             <DockPanel>
