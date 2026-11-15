@@ -336,6 +336,27 @@ internal class QuickBar : Window
     public static UIElement IcPicker() => Icon(P("M14,4 L20,10 M16,6 L7,15 L5,20 L10,18 L19,9"));
     public static UIElement IcLoupe() => Icon(P("M10,3 A7,7 0 1 0 10,17 A7,7 0 1 0 10,3 Z"), P("M15,15 L21,21", 2.6), P("M10,7 V13 M7,10 H13", 1.4));
     public static UIElement IcRuler() => Icon(P("M2,8 H22 V16 H2 Z"), P("M6,8 V12 M10,8 V11 M14,8 V12 M18,8 V11"));
-    public static UIElement IcGear() => new TextBlock { Text = "", FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 22, Foreground = Ink };
+    /// <summary>Zahnrad im gleichen Strich-Stil und in der gleichen Größe (18 px Durchmesser in 24er Fläche) wie die übrigen Symbole.</summary>
+    public static UIElement IcGear()
+    {
+        const double cx = 12, cy = 12, R = 9, r = 6.9;
+        var sg = new StreamGeometry();
+        using (var c = sg.Open())
+        {
+            Point Pt(double deg, double rad) => new(cx + rad * Math.Cos(deg * Math.PI / 180), cy + rad * Math.Sin(deg * Math.PI / 180));
+            for (int i = 0; i < 8; i++)
+            {
+                double a = i * 45;
+                if (i == 0) c.BeginFigure(Pt(a - 11, r), false, true); else c.LineTo(Pt(a - 11, r), true, true);
+                c.LineTo(Pt(a - 7, R), true, true);
+                c.LineTo(Pt(a + 7, R), true, true);
+                c.LineTo(Pt(a + 11, r), true, true);
+            }
+        }
+        sg.Freeze();
+        var body = new Path { Data = sg, Stroke = Ink, StrokeThickness = 1.8, StrokeLineJoin = PenLineJoin.Round, Fill = Brushes.Transparent };
+        var hole = P("M12,8.8 A3.2,3.2 0 1 0 12,15.2 A3.2,3.2 0 1 0 12,8.8 Z");
+        return Icon(body, hole);
+    }
 }
 
