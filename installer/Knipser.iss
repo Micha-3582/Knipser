@@ -52,6 +52,25 @@ Name: "{autodesktop}\Knipser"; Filename: "{app}\Knipser.exe"; Tasks: desktopicon
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Knipser"; ValueData: """{app}\Knipser.exe"""; Flags: uninsdeletevalue; Tasks: autostart
 
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.png\shell\Knipser"; ValueType: string; ValueName: ""; ValueData: "Mit Knipser bearbeiten"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.png\shell\Knipser"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\Knipser.exe"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.png\shell\Knipser\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Knipser.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.jpg\shell\Knipser"; ValueType: string; ValueName: ""; ValueData: "Mit Knipser bearbeiten"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.jpg\shell\Knipser"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\Knipser.exe"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.jpg\shell\Knipser\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Knipser.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.jpeg\shell\Knipser"; ValueType: string; ValueName: ""; ValueData: "Mit Knipser bearbeiten"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.jpeg\shell\Knipser"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\Knipser.exe"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.jpeg\shell\Knipser\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Knipser.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.bmp\shell\Knipser"; ValueType: string; ValueName: ""; ValueData: "Mit Knipser bearbeiten"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.bmp\shell\Knipser"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\Knipser.exe"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.bmp\shell\Knipser\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Knipser.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.webp\shell\Knipser"; ValueType: string; ValueName: ""; ValueData: "Mit Knipser bearbeiten"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.webp\shell\Knipser"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\Knipser.exe"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.webp\shell\Knipser\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Knipser.exe"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.gif\shell\Knipser"; ValueType: string; ValueName: ""; ValueData: "Mit Knipser bearbeiten"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.gif\shell\Knipser"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\Knipser.exe"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.gif\shell\Knipser\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Knipser.exe"" ""%1"""
+
 [Run]
 Filename: "{app}\Knipser.exe"; Description: "Knipser jetzt starten"; Flags: nowait postinstall skipifsilent
 

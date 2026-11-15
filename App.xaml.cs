@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Interop;
@@ -24,7 +25,14 @@ public partial class App : Application
     {
         base.OnStartup(e);
         mutex = new Mutex(true, "Knipser.SingleInstance", out bool created);
-        if (!created) { Shutdown(); return; }
+        var fileArg = e.Args.FirstOrDefault(File.Exists);
+        if (!created)
+        {
+            // Läuft schon: Datei an die laufende Instanz weiterreichen
+            if (fileArg != null) SendToRunning(fileArg);
+            Shutdown(); return;
+        }
+        StartPipeServer();
 
         Settings = Settings.Load();
         BuildTray();
@@ -38,6 +46,72 @@ public partial class App : Application
             tray!.ShowBalloonTip(5000, "Knipser",
                 "Tastenkürzel belegt (läuft evtl. noch ein anderes Screenshot-Programm?): " + string.Join(", ", failed),
                 Forms.ToolTipIcon.Warning);
+        if (fileArg != null) Dispatcher.BeginInvoke(() => OpenFile(fileArg));
+    }
+
+    const string PipeName = "Knipser.OpenFile";
+
+    static void SendToRunning(string path)
+    {
+        try
+        {
+            using var c = new System.IO.Pipes.NamedPipeClientStream(".", PipeName, System.IO.Pipes.PipeDirection.Out);
+            c.Connect(3000);
+            using var w = new StreamWriter(c, new System.Text.UTF8Encoding(false));
+            w.Write(path);
+        }
+        catch { }
+    }
+
+    void StartPipeServer()
+    {
+        var t = new Thread(() =>
+        {
+            while (true)
+            {
+                try
+                {
+                    using var s = new System.IO.Pipes.NamedPipeServerStream(PipeName, System.IO.Pipes.PipeDirection.In);
+                    s.WaitForConnection();
+                    using var r = new StreamReader(s, System.Text.Encoding.UTF8);
+                    var path = r.ReadToEnd();
+                    if (File.Exists(path)) Dispatcher.BeginInvoke(() => OpenFile(path));
+                }
+                catch { Thread.Sleep(500); }
+            }
+        }) { IsBackground = true };
+        t.Start();
+    }
+
+    /// <summary>Öffnet eine Bilddatei (Kontextmenü „Mit Knipser bearbeiten“) im Editor.</summary>
+    void OpenFile(string path)
+    {
+        try
+        {
+            BitmapSource bmp;
+            if (Path.GetExtension(path).Equals(".webp", StringComparison.OrdinalIgnoreCase))
+            {
+                using var sk = SkiaSharp.SKBitmap.Decode(path);
+                using var img = SkiaSharp.SKImage.FromBitmap(sk);
+                using var data = img.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+                var ms = new MemoryStream(data.ToArray());
+                var bi = new BitmapImage();
+                bi.BeginInit(); bi.CacheOption = BitmapCacheOption.OnLoad; bi.StreamSource = ms; bi.EndInit(); bi.Freeze();
+                bmp = bi;
+            }
+            else
+            {
+                var bi = new BitmapImage();
+                bi.BeginInit(); bi.CacheOption = BitmapCacheOption.OnLoad; bi.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+                bi.UriSource = new Uri(path); bi.EndInit(); bi.Freeze();
+                bmp = bi;
+            }
+            OpenEditor(bmp);
+        }
+        catch (Exception ex)
+        {
+            tray?.ShowBalloonTip(4000, "Knipser", "Bild konnte nicht geöffnet werden: " + ex.Message, Forms.ToolTipIcon.Error);
+        }
     }
 
     /// <summary>Registriert alle Tastenkürzel neu (auch nach Änderung in den Einstellungen). Liefert die nicht registrierbaren.</summary>
