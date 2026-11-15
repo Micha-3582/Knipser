@@ -24,6 +24,8 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (e.Args.Length > 0 && (e.Args[0] == "--menu-on" || e.Args[0] == "--menu-off"))
+        { Shutdown(ShellMenu.Apply(e.Args[0] == "--menu-on")); return; }
         mutex = new Mutex(true, "Knipser.SingleInstance", out bool created);
         var fileArg = e.Args.FirstOrDefault(File.Exists);
         if (!created)

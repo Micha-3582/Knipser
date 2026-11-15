@@ -28,6 +28,7 @@ internal class SettingsWindow : Window
     readonly CheckBox cursorCb = new() { Content = "Mauszeiger im Bild mit aufnehmen" };
     readonly Slider delay = new() { Minimum = 0, Maximum = 10, Width = 130, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock delayText = new() { Width = 60, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right };
+    readonly CheckBox menuCb = new() { Content = "Im Explorer-Rechtsklickmenü anzeigen („Mit Knipser bearbeiten“ für Bilder)" };
     readonly CheckBox autostart = new() { Content = "Mit Windows starten" };
     readonly TextBox fixedW = new() { Width = 60, Padding = new Thickness(4, 3, 4, 3) }, fixedH = new() { Width = 60, Padding = new Thickness(4, 3, 4, 3) };
     readonly TextBox pattern = new() { Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(6, 4, 6, 4), Background = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2B)), Foreground = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)) };
@@ -126,7 +127,7 @@ internal class SettingsWindow : Window
         // Allgemein
         var pAllg = NewPage("Allgemein");
         pAllg.Children.Add(Head("Start"));
-        Checks(pAllg, autostart, checkUpd);
+        Checks(pAllg, autostart, checkUpd, menuCb);
         pAllg.Children.Add(Head("Farbpipette"));
         colorFmt.Items.Add("Hex (#RRGGBB)"); colorFmt.Items.Add("RGB (rgb(r, g, b))"); colorFmt.Items.Add("C++ (0xRRGGBB)");
         colorFmt.SelectedIndex = s.ColorFormat switch { "rgb" => 1, "cpp" => 2, _ => 0 };
@@ -311,6 +312,7 @@ internal class SettingsWindow : Window
         folder.Text = s.SaveFolder;
         openEditor.IsChecked = s.OpenEditor; saveOnClose.IsChecked = s.SaveOnClose; copy.IsChecked = s.CopyToClipboard;
         autostart.IsChecked = GetAutostart();
+        menuCb.IsChecked = ShellMenu.IsOn();
         hideEditorCb.IsChecked = s.HideEditorOnCapture; dimCb.IsChecked = s.DimOutside;
         extProg.Text = s.ExternalProgram; extArgs.Text = s.ExternalArgs;
         ShowPreviewName();
@@ -442,6 +444,11 @@ internal class SettingsWindow : Window
         s.SaveOnClose = saveOnClose.IsChecked == true;
         s.CopyToClipboard = copy.IsChecked == true;
         SetAutostart(autostart.IsChecked == true);
+        if ((menuCb.IsChecked == true) != ShellMenu.IsOn())
+        {
+            // einmalige Administrator-Abfrage von Windows
+            if (!ShellMenu.Set(menuCb.IsChecked == true)) menuCb.IsChecked = ShellMenu.IsOn();
+        }
         s.Save();
         if (failed.Count > 0)
         {
