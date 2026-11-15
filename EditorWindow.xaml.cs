@@ -45,6 +45,9 @@ public partial class EditorWindow : Window
         Icon = App.WindowIcon;
         this.settings = settings;
         bmp = image;
+        // Schachbrettmuster hinter dem Bild wie in Photoshop: zeigt transparente Stellen an (wird nie mitgespeichert)
+        checker.Fill = checkerBrush;
+        Host.Children.Insert(0, checker);
         Art.Children.Add(baseImg);
         SetBitmap(bmp);
         BuildToolbar();
@@ -895,9 +898,25 @@ public partial class EditorWindow : Window
     }
 
     // ---------- Bild & Zoom ----------
+    // Photoshop-Optik: weiße und hellgraue (#CCCCCC) Felder, 8 Bildschirmpixel groß
+    readonly DrawingBrush checkerBrush = MakeChecker();
+    readonly Rectangle checker = new() { IsHitTestVisible = false, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+
+    static DrawingBrush MakeChecker()
+    {
+        var g = new DrawingGroup();
+        g.Children.Add(new GeometryDrawing(Brushes.White, null, new RectangleGeometry(new Rect(0, 0, 16, 16))));
+        var gray = new SolidColorBrush(Color.FromRgb(0xCC, 0xCC, 0xCC));
+        g.Children.Add(new GeometryDrawing(gray, null, new RectangleGeometry(new Rect(0, 0, 8, 8))));
+        g.Children.Add(new GeometryDrawing(gray, null, new RectangleGeometry(new Rect(8, 8, 8, 8))));
+        var b = new DrawingBrush(g) { TileMode = TileMode.Tile, ViewportUnits = BrushMappingMode.Absolute, Viewport = new Rect(0, 0, 16, 16), ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, 16, 16) };
+        return b;
+    }
+
     void SetBitmap(BitmapSource b)
     {
         bmp = b;
+        checker.Width = b.PixelWidth; checker.Height = b.PixelHeight;
         baseImg.Source = b;
         baseImg.Width = b.PixelWidth; baseImg.Height = b.PixelHeight;
         Art.Width = b.PixelWidth; Art.Height = b.PixelHeight;
@@ -913,6 +932,7 @@ public partial class EditorWindow : Window
     {
         z = Math.Clamp(z, 0.1, 8);
         Zoom.ScaleX = Zoom.ScaleY = z;
+        checkerBrush.Viewport = new Rect(0, 0, 16 / z, 16 / z);   // Felder behalten ihre Bildschirmgröße
         zoomSync = true; ZoomSlider.Value = Math.Clamp(z * 100, 10, 400); zoomSync = false;
         ZoomText.Text = $"{Math.Round(z * 100)} %";
         PositionSel();
@@ -2850,3 +2870,4 @@ public partial class EditorWindow : Window
         else if (e.Key == Key.Escape && selected != null) { Select(null); e.Handled = true; }
     }
 }
+

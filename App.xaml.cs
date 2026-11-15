@@ -447,7 +447,7 @@ public partial class App : Application
                 }
                 geo.Freeze();
                 var dv = new System.Windows.Media.DrawingVisual();
-                bool png = Settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase);
+                bool png = Settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase) || Settings.ImageFormat.Equals("webp", StringComparison.OrdinalIgnoreCase);   // Formate mit Transparenz
                 using (var dc = dv.RenderOpen())
                 {
                     if (!png) dc.DrawRectangle(System.Windows.Media.Brushes.White, null, new System.Windows.Rect(0, 0, r.Width, r.Height));
