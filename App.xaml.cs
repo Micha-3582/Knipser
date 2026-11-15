@@ -447,10 +447,9 @@ public partial class App : Application
                 }
                 geo.Freeze();
                 var dv = new System.Windows.Media.DrawingVisual();
-                bool png = Settings.ImageFormat.Equals("png", StringComparison.OrdinalIgnoreCase) || Settings.ImageFormat.Equals("webp", StringComparison.OrdinalIgnoreCase);   // Formate mit Transparenz
                 using (var dc = dv.RenderOpen())
                 {
-                    if (!png) dc.DrawRectangle(System.Windows.Media.Brushes.White, null, new System.Windows.Rect(0, 0, r.Width, r.Height));
+                    // Außerhalb der Auswahl bleibt das Bild immer transparent; der Editor zeigt je nach Format Schachbrett (PNG/WebP) oder Weiß (JPG)
                     dc.PushClip(geo);
                     dc.DrawImage(crop, new System.Windows.Rect(0, 0, r.Width, r.Height));
                     dc.Pop();
@@ -560,7 +559,7 @@ public partial class App : Application
         RestoreEditors();
         if (Settings.CopyToClipboard)
         {
-            try { Clipboard.SetImage(bmp); } catch { }
+            try { Clipboard.SetImage(Settings.ImageFormat.Equals("jpg", StringComparison.OrdinalIgnoreCase) ? EditorWindow.FlattenOnWhite(bmp) : bmp); } catch { }
         }
         if (Settings.OpenEditor) OpenEditor(bmp);
         else tray?.ShowBalloonTip(1500, "Knipser", "In die Zwischenablage kopiert.", Forms.ToolTipIcon.Info);

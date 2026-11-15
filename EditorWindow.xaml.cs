@@ -906,7 +906,7 @@ public partial class EditorWindow : Window
     void UpdateChecker() => checker.Fill = IsPng ? checkerBrush : Brushes.White;
 
     /// <summary>Transparente Stellen auf Weiß legen (Formate ohne Transparenz, sonst werden sie schwarz).</summary>
-    static BitmapSource FlattenOnWhite(BitmapSource src)
+    internal static BitmapSource FlattenOnWhite(BitmapSource src)
     {
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
@@ -2850,7 +2850,7 @@ public partial class EditorWindow : Window
 
     void CopyToClipboard()
     {
-        try { Clipboard.SetImage(Render()); Status.Text = "In die Zwischenablage kopiert."; }
+        try { Clipboard.SetImage(IsPng ? Render() : FlattenOnWhite(Render())); Status.Text = "In die Zwischenablage kopiert."; }
         catch (Exception ex) { Status.Text = "Kopieren fehlgeschlagen: " + ex.Message; }
     }
 
