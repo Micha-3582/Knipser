@@ -97,7 +97,7 @@ internal class QuickBar : Window
             if (!dragging) bar.CaptureMouse();
             dragging = true;
             offset = ClampOffset(pressOffset + dx / scale);
-            Place(true);
+            MoveOnly();
         };
         bar.PreviewMouseLeftButtonUp += (_, e) =>
         {
@@ -139,8 +139,9 @@ internal class QuickBar : Window
         if (hwnd == IntPtr.Zero) return;
         var sb = Forms.Screen.PrimaryScreen!.Bounds;
         bool full = t > 0;
-        // 1) erst auf den Hauptbildschirm holen, damit die richtige Skalierung gilt
-        Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, sb.X + sb.Width / 2, sb.Y, 0, 0, 0x0001 | Native.SWP_NOACTIVATE);   // SWP_NOSIZE
+        // 1) erst auf den Hauptbildschirm holen, damit die richtige Skalierung gilt (nur wenn das Fenster nicht schon dort liegt)
+        if (!Native.GetWindowRect(hwnd, out var cur) || cur.Left < sb.Left || cur.Right > sb.Right || cur.Top < sb.Top || cur.Top > sb.Top + 50)
+            Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, sb.X + sb.Width / 2, sb.Y, 0, 0, 0x0001 | Native.SWP_NOACTIVATE);   // SWP_NOSIZE
         scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
         Width = full ? BarW : HandleW;
         Height = full ? BarH : HandleH;
@@ -148,6 +149,16 @@ internal class QuickBar : Window
         int x = (int)Math.Round(sb.X + (sb.Width - Width * scale) / 2 + offset * scale);
         Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, x, sb.Y, 0, 0, 0x0001 | Native.SWP_NOACTIVATE);
         wasFull = full; placed = true;
+    }
+
+    /// <summary>Beim Ziehen: nur seitlich verschieben, ein einziger Aufruf pro Mausbewegung (kein Flackern).</summary>
+    void MoveOnly()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return;
+        var sb = Forms.Screen.PrimaryScreen!.Bounds;
+        int x = (int)Math.Round(sb.X + (sb.Width - (r.Right - r.Left)) / 2.0 + offset * scale);
+        Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, x, sb.Y, 0, 0, 0x0001 | Native.SWP_NOACTIVATE);
     }
 
     /// <summary>Sitzt das Fenster noch dort, wo es hingehört? (Windows oder andere Programme könnten es verschoben haben.)</summary>
