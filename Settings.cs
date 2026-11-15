@@ -21,6 +21,8 @@ public class Settings
     public bool QuickBar { get; set; } = true;
     /// <summary>Seitliche Verschiebung der Schnellzugriffsleiste gegen die Bildschirmmitte (in DIPs).</summary>
     public double QuickBarOffset { get; set; } = 0;
+    /// <summary>Monitor (Gerätename), an dessen oberem Rand die Schnellzugriffsleiste sitzt; leer = Hauptbildschirm.</summary>
+    public string QuickBarScreen { get; set; } = "";
     public bool CheckUpdates { get; set; } = true;
     /// <summary>Sekunden Wartezeit vor der Aufnahme (0 = sofort).</summary>
     public int CaptureDelay { get; set; } = 0;

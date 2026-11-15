@@ -41,14 +41,36 @@ internal class QuickBar : Window
     double scale = 1;
 
     double offset;                 // Verschiebung gegen die Bildschirmmitte in DIPs
-    readonly Action<double> saveOffset;
+    readonly Action<double, string> saveOffset;
     bool dragging, pressed;
     Point pressPos;                // Bildschirmposition (Pixel) beim Drücken
-    double pressOffset;
+    double grabDx;                 // Abstand Mauszeiger – Leistenmitte beim Greifen (Pixel)
+    string screenName;             // Monitor, an dessen oberem Rand die Leiste sitzt
 
-    public QuickBar(IList<(string Label, Func<UIElement> Icon, Action Run)?> items, double startOffset, Action<double> saveOffset)
+    /// <summary>Der Monitor der Leiste (fehlt er, z. B. Kabel gezogen, gilt der Hauptbildschirm).</summary>
+    Forms.Screen Scr()
     {
-        offset = startOffset; this.saveOffset = saveOffset;
+        foreach (var s in Forms.Screen.AllScreens) if (s.DeviceName == screenName) return s;
+        return Forms.Screen.PrimaryScreen!;
+    }
+
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(Native.POINT pt, uint flags);
+    [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr hMon, int type, out uint x, out uint y);
+    /// <summary>Skalierungsfaktor eines Monitors (1,0 = 100 %).</summary>
+    static double MonitorScale(Forms.Screen s)
+    {
+        try
+        {
+            var m = MonitorFromPoint(new Native.POINT { X = s.Bounds.X + 1, Y = s.Bounds.Y + 1 }, 2);
+            if (GetDpiForMonitor(m, 0, out var dx, out _) == 0 && dx > 0) return dx / 96.0;
+        }
+        catch { }
+        return 1;
+    }
+
+    public QuickBar(IList<(string Label, Func<UIElement> Icon, Action Run)?> items, double startOffset, string startScreen, Action<double, string> saveOffset)
+    {
+        offset = startOffset; screenName = startScreen; this.saveOffset = saveOffset;
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         ShowInTaskbar = false; Topmost = true; ShowActivated = false; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.Manual;
@@ -86,7 +108,9 @@ internal class QuickBar : Window
         bar.PreviewMouseLeftButtonDown += (_, e) =>
         {
             Native.GetCursorPos(out var p);
-            pressed = true; dragging = false; pressPos = new Point(p.X, p.Y); pressOffset = offset;
+            pressed = true; dragging = false; pressPos = new Point(p.X, p.Y);
+            var hw = new WindowInteropHelper(this).Handle;
+            grabDx = Native.GetWindowRect(hw, out var wr) ? p.X - (wr.Left + wr.Right) / 2.0 : 0;
         };
         bar.PreviewMouseMove += (_, e) =>
         {
@@ -96,14 +120,23 @@ internal class QuickBar : Window
             if (!dragging && Math.Abs(dx) < 5) return;
             if (!dragging) bar.CaptureMouse();
             dragging = true;
-            offset = ClampOffset(pressOffset + dx / scale);
-            MoveOnly();
+            // Monitor unter dem Mauszeiger (nach links/rechts über die Monitorgrenze ziehen wechselt den Monitor)
+            Forms.Screen target = Scr();
+            foreach (var s in Forms.Screen.AllScreens)
+                if (p.X >= s.Bounds.Left && p.X < s.Bounds.Right) { target = s; break; }
+            bool changed = target.DeviceName != Scr().DeviceName;
+            if (changed) { screenName = target.DeviceName; scale = MonitorScale(target); }
+            var sb = target.Bounds;
+            double wpx = Math.Min(BarW * scale, sb.Width);
+            double offPx = Math.Clamp(p.X - grabDx - (sb.X + sb.Width / 2.0), -(sb.Width - wpx) / 2, (sb.Width - wpx) / 2);
+            offset = offPx / scale;
+            if (changed) Place(true); else MoveOnly();
         };
         bar.PreviewMouseLeftButtonUp += (_, e) =>
         {
             if (!pressed) return;
             pressed = false; bar.ReleaseMouseCapture();
-            if (dragging) { dragging = false; e.Handled = true; saveOffset(offset); }
+            if (dragging) { dragging = false; e.Handled = true; saveOffset(offset, screenName); }
         };
         var root = new Grid { ClipToBounds = true };
         root.Children.Add(pill); root.Children.Add(bar);
@@ -125,19 +158,20 @@ internal class QuickBar : Window
 
     double ClampOffset(double o)
     {
-        var sb = Forms.Screen.PrimaryScreen!.Bounds;
+        var sb = Scr().Bounds;
         double max = (sb.Width / scale - BarW) / 2;
         return Math.Clamp(o, -max, max);
     }
 
     bool placed;
 
-    /// <summary>Setzt die Leiste in Pixeln an den oberen Rand des Hauptbildschirms (unabhängig von Skalierung und Windows-Startposition).</summary>
+    /// <summary>Setzt die Leiste in Pixeln an den oberen Rand ihres Monitors (unabhängig von Skalierung und Windows-Startposition).</summary>
     void PlaceWindow()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
-        var sb = Forms.Screen.PrimaryScreen!.Bounds;
+        var sb = Scr().Bounds;
+        if (!dragging) offset = ClampOffset(offset);
         bool full = t > 0;
         // 1) erst auf den Hauptbildschirm holen, damit die richtige Skalierung gilt (nur wenn das Fenster nicht schon dort liegt)
         if (!Native.GetWindowRect(hwnd, out var cur) || cur.Left < sb.Left || cur.Right > sb.Right || cur.Top < sb.Top || cur.Top > sb.Top + 50)
@@ -156,7 +190,7 @@ internal class QuickBar : Window
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return;
-        var sb = Forms.Screen.PrimaryScreen!.Bounds;
+        var sb = Scr().Bounds;
         int x = (int)Math.Round(sb.X + (sb.Width - (r.Right - r.Left)) / 2.0 + offset * scale);
         Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, x, sb.Y, 0, 0, 0x0001 | Native.SWP_NOACTIVATE);
     }
@@ -166,7 +200,7 @@ internal class QuickBar : Window
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return true;
-        var sb = Forms.Screen.PrimaryScreen!.Bounds;
+        var sb = Scr().Bounds;
         double w = r.Right - r.Left;
         double x = sb.X + (sb.Width - w) / 2 + offset * scale;
         return Math.Abs(r.Left - x) <= 2 && r.Top == sb.Y;
@@ -187,7 +221,7 @@ internal class QuickBar : Window
     bool CursorIn(double margin, bool handleOnly)
     {
         Native.GetCursorPos(out var p);
-        var sb = Forms.Screen.PrimaryScreen!.Bounds;
+        var sb = Scr().Bounds;
         double cx = sb.X + sb.Width / 2.0 + offset * scale;
         double w = (handleOnly ? HandleW + 120 : BarW) * scale / 2 + margin;
         double h = (handleOnly ? 4 : BarH * scale) + margin;
@@ -200,11 +234,11 @@ internal class QuickBar : Window
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
 
     /// <summary>Vollbild-Programm (Spiel, Video) im Vordergrund: Leiste nicht ausfahren.</summary>
-    static bool ForegroundFullscreen()
+    bool ForegroundFullscreen()
     {
         var h = GetForegroundWindow();
         if (h == IntPtr.Zero || !Native.GetWindowRect(h, out var r)) return false;
-        var sb = Forms.Screen.PrimaryScreen!.Bounds;
+        var sb = Scr().Bounds;
         if (r.Left > sb.Left || r.Top > sb.Top || r.Right < sb.Right || r.Bottom < sb.Bottom) return false;
         // Maximierte Fenster ragen ein paar Pixel über den Rand, haben aber eine Titelleiste: das ist kein Vollbild
         if ((Native.GetWindowLong(h, -16) & 0x00C00000) != 0) return false;
