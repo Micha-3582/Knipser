@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -73,29 +73,42 @@ internal class QuickBar : Window
             row.Children.Add(b);
         }
         bar.Child = row;
+        bar.RenderTransformOrigin = new Point(0.5, 0);
+        bar.RenderTransform = new TransformGroup { Children = { barScale, barMove } };
         var root = new Grid { ClipToBounds = true };
         root.Children.Add(pill); root.Children.Add(bar);
         Content = root;
 
-        Width = HandleW; Height = HandleH;
         SourceInitialized += (_, _) =>
         {
             var h = new WindowInteropHelper(this).Handle;
             Native.SetWindowLong(h, Native.GWL_EXSTYLE, Native.GetWindowLong(h, Native.GWL_EXSTYLE) | Native.WS_EX_NOACTIVATE | Native.WS_EX_TOOLWINDOW);
         };
-        Loaded += (_, _) => { scale = VisualTreeHelper.GetDpi(this).DpiScaleX; Place(); poll.Start(); };
+        Loaded += (_, _) => { scale = VisualTreeHelper.GetDpi(this).DpiScaleX; Place(); poll.Start(); clock.Start(); CompositionTarget.Rendering += Frame; };
         poll.Tick += (_, _) => Tick();
     }
 
+    bool wasFull;
+    readonly ScaleTransform barScale = new(0.6, 1);
+    readonly TranslateTransform barMove = new(0, -BarH);
+
     void Place()
     {
-        var sb = Forms.Screen.PrimaryScreen!.Bounds;
-        double sw = sb.Width / scale;
-        Width = HandleW + (BarW - HandleW) * t;
-        Height = HandleH + (BarH - HandleH) * t;
-        Left = sb.X / scale + (sw - Width) / 2;
-        Top = sb.Y / scale;
-        bar.Opacity = t; pill.Opacity = 1 - t;
+        bool full = t > 0;
+        if (full != wasFull || Width == 0 || double.IsNaN(Left))
+        {
+            wasFull = full;
+            var sb = Forms.Screen.PrimaryScreen!.Bounds;
+            Width = full ? BarW : HandleW;
+            Height = full ? BarH : HandleH;
+            Left = sb.X / scale + (sb.Width / scale - Width) / 2;
+            Top = sb.Y / scale;
+        }
+        double e = 1 - Math.Pow(1 - t, 3);          // weich abbremsen
+        barMove.Y = -(1 - e) * BarH;
+        barScale.ScaleX = 0.6 + 0.4 * e;
+        bar.Opacity = Math.Min(1, e * 1.6);
+        pill.Opacity = 1 - e;
     }
 
     /// <summary>Liegt der Mauszeiger im (ggf. vergrößerten) Bereich der Leiste?</summary>
@@ -147,14 +160,20 @@ internal class QuickBar : Window
             else if (sinceOut == DateTime.MaxValue) sinceOut = now;
             else if ((now - sinceOut).TotalMilliseconds > 450) { opening = false; sinceOut = DateTime.MaxValue; }
         }
+    }
+
+    readonly System.Diagnostics.Stopwatch clock = new();
+
+    /// <summary>Läuft im Bildwiederholtakt des Monitors, daher flüssig.</summary>
+    void Frame(object? sender, EventArgs e)
+    {
+        double dt = clock.Elapsed.TotalSeconds; clock.Restart();
+        dt = Math.Min(dt, 0.05);
         double target = opening ? 1 : 0;
-        if (Math.Abs(t - target) > 0.001)
-        {
-            t += (target - t) * 0.32 + Math.Sign(target - t) * 0.01;
-            t = Math.Clamp(t, 0, 1);
-            if (Math.Abs(t - target) < 0.02) t = target;
-            Place();
-        }
+        if (t == target) return;
+        double speed = opening ? 1 / 0.26 : 1 / 0.20;
+        t = target > t ? Math.Min(target, t + dt * speed) : Math.Max(target, t - dt * speed);
+        Place();
     }
 
     /// <summary>Leiste sofort ausblenden (vor einer Aufnahme).</summary>
@@ -172,7 +191,7 @@ internal class QuickBar : Window
         Show();
     }
 
-    protected override void OnClosed(EventArgs e) { poll.Stop(); base.OnClosed(e); }
+    protected override void OnClosed(EventArgs e) { poll.Stop(); CompositionTarget.Rendering -= Frame; base.OnClosed(e); }
 
     // ---------- Symbole ----------
     static Path P(string data, double th = 1.8) => new()
