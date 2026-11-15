@@ -114,8 +114,9 @@ internal class QuickBar : Window
             var h = new WindowInteropHelper(this).Handle;
             Native.SetWindowLong(h, Native.GWL_EXSTYLE, Native.GetWindowLong(h, Native.GWL_EXSTYLE) | Native.WS_EX_NOACTIVATE | Native.WS_EX_TOOLWINDOW);
         };
-        Loaded += (_, _) => { scale = VisualTreeHelper.GetDpi(this).DpiScaleX; Place(); poll.Start(); clock.Start(); CompositionTarget.Rendering += Frame; };
+        Loaded += (_, _) => { scale = VisualTreeHelper.GetDpi(this).DpiScaleX; Place(); poll.Start(); };
         poll.Tick += (_, _) => Tick();
+        anim.Tick += Frame;
     }
 
     bool wasFull;
@@ -196,9 +197,19 @@ internal class QuickBar : Window
             else if (sinceOut == DateTime.MaxValue) sinceOut = now;
             else if ((now - sinceOut).TotalMilliseconds > 450) { opening = false; sinceOut = DateTime.MaxValue; }
         }
+        if (t != (opening ? 1 : 0)) KickAnim();
     }
 
     readonly System.Diagnostics.Stopwatch clock = new();
+    // Eigener Takt statt CompositionTarget.Rendering: Das feuert im Leerlauf nicht und ließ die Leiste manchmal 1-2 s hängen
+    readonly DispatcherTimer anim = new(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(8) };
+
+    void KickAnim()
+    {
+        if (anim.IsEnabled) return;
+        clock.Restart();
+        anim.Start();
+    }
 
     /// <summary>Läuft im Bildwiederholtakt des Monitors, daher flüssig.</summary>
     void Frame(object? sender, EventArgs e)
@@ -206,7 +217,7 @@ internal class QuickBar : Window
         double dt = clock.Elapsed.TotalSeconds; clock.Restart();
         dt = Math.Min(dt, 0.05);
         double target = opening ? 1 : 0;
-        if (t == target) return;
+        if (t == target) { anim.Stop(); return; }
         double speed = opening ? 1 / 0.26 : 1 / 0.20;
         t = target > t ? Math.Min(target, t + dt * speed) : Math.Max(target, t - dt * speed);
         Place();
@@ -215,7 +226,7 @@ internal class QuickBar : Window
     /// <summary>Leiste sofort ausblenden (vor einer Aufnahme).</summary>
     public void Suspend()
     {
-        suspended = true; opening = false; t = 0; sinceIn = sinceOut = DateTime.MaxValue;
+        suspended = true; opening = false; anim.Stop(); t = 0; sinceIn = sinceOut = DateTime.MaxValue;
         Place();
         Hide();
     }
@@ -227,7 +238,7 @@ internal class QuickBar : Window
         Show();
     }
 
-    protected override void OnClosed(EventArgs e) { poll.Stop(); CompositionTarget.Rendering -= Frame; base.OnClosed(e); }
+    protected override void OnClosed(EventArgs e) { poll.Stop(); anim.Stop(); base.OnClosed(e); }
 
     // ---------- Symbole ----------
     static Path P(string data, double th = 1.8) => new()
