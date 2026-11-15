@@ -248,9 +248,29 @@ internal class QuickBar : Window
         return c != "WorkerW" && c != "Progman" && c != "Shell_TrayWnd";
     }
 
+    bool fsHidden;                  // Vollbild-Programm im Vordergrund: Leiste samt Griff komplett ausgeblendet
+    DateTime nextFsCheck = DateTime.MinValue;
+
     void Tick()
     {
-        if (suspended) return;
+        var t0 = DateTime.UtcNow;
+        if (t0 >= nextFsCheck)
+        {
+            nextFsCheck = t0.AddMilliseconds(250);
+            bool fs = ForegroundFullscreen();
+            if (fs && !fsHidden)
+            {
+                fsHidden = true; opening = false; anim.Stop(); t = 0; sinceIn = sinceOut = DateTime.MaxValue;
+                Place();
+                Hide();
+            }
+            else if (!fs && fsHidden)
+            {
+                fsHidden = false;
+                if (!suspended) Show();
+            }
+        }
+        if (suspended || fsHidden) return;
         if (!dragging && placed && !PositionOk()) Place(true);
         var now = DateTime.UtcNow;
         if (!opening)
@@ -304,7 +324,7 @@ internal class QuickBar : Window
     {
         if (!suspended) return;
         suspended = false;
-        Show();
+        if (!fsHidden) Show();
     }
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi) { base.OnDpiChanged(oldDpi, newDpi); Place(true); }
