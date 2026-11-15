@@ -73,7 +73,7 @@ public partial class App : Application
                 ("Lineal", QuickBar.IcRuler, () => PixelTool(PixelMode.Ruler)),
                 null,
                 ("Einstellungen", QuickBar.IcGear, () => { ShowSettings(); quickBar?.Resume(); }),
-            });
+            }, Settings.QuickBarOffset, o => { Settings.QuickBarOffset = o; Settings.Save(); });
             quickBar.Show();
         }
         else if (!Settings.QuickBar && quickBar != null)

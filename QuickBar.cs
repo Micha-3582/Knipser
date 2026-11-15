@@ -33,15 +33,22 @@ internal class QuickBar : Window
         HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
         Background = new SolidColorBrush(Color.FromArgb(0xB0, 0x3D, 0x9B, 0xFF))
     };
-    readonly DispatcherTimer poll = new() { Interval = TimeSpan.FromMilliseconds(40) };
+    readonly DispatcherTimer poll = new() { Interval = TimeSpan.FromMilliseconds(15) };
     double t;              // 0 = eingefahren, 1 = ausgefahren
     bool opening;
     DateTime sinceIn = DateTime.MaxValue, sinceOut = DateTime.MaxValue;
     bool suspended;
     double scale = 1;
 
-    public QuickBar(IList<(string Label, Func<UIElement> Icon, Action Run)?> items)
+    double offset;                 // Verschiebung gegen die Bildschirmmitte in DIPs
+    readonly Action<double> saveOffset;
+    bool dragging, pressed;
+    Point pressPos;                // Bildschirmposition (Pixel) beim Drücken
+    double pressOffset;
+
+    public QuickBar(IList<(string Label, Func<UIElement> Icon, Action Run)?> items, double startOffset, Action<double> saveOffset)
     {
+        offset = startOffset; this.saveOffset = saveOffset;
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         ShowInTaskbar = false; Topmost = true; ShowActivated = false; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.Manual;
@@ -75,6 +82,29 @@ internal class QuickBar : Window
         bar.Child = row;
         bar.RenderTransformOrigin = new Point(0.5, 0);
         bar.RenderTransform = new TransformGroup { Children = { barScale, barMove } };
+        // Mit gedrückter linker Maustaste seitlich verschieben (auch beginnend auf einem Knopf: erst ab 5 px Bewegung)
+        bar.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            Native.GetCursorPos(out var p);
+            pressed = true; dragging = false; pressPos = new Point(p.X, p.Y); pressOffset = offset;
+        };
+        bar.PreviewMouseMove += (_, e) =>
+        {
+            if (!pressed) return;
+            Native.GetCursorPos(out var p);
+            double dx = p.X - pressPos.X;
+            if (!dragging && Math.Abs(dx) < 5) return;
+            if (!dragging) bar.CaptureMouse();
+            dragging = true;
+            offset = ClampOffset(pressOffset + dx / scale);
+            Place(true);
+        };
+        bar.PreviewMouseLeftButtonUp += (_, e) =>
+        {
+            if (!pressed) return;
+            pressed = false; bar.ReleaseMouseCapture();
+            if (dragging) { dragging = false; e.Handled = true; saveOffset(offset); }
+        };
         var root = new Grid { ClipToBounds = true };
         root.Children.Add(pill); root.Children.Add(bar);
         Content = root;
@@ -92,16 +122,23 @@ internal class QuickBar : Window
     readonly ScaleTransform barScale = new(0.6, 1);
     readonly TranslateTransform barMove = new(0, -BarH);
 
-    void Place()
+    double ClampOffset(double o)
+    {
+        var sb = Forms.Screen.PrimaryScreen!.Bounds;
+        double max = (sb.Width / scale - BarW) / 2;
+        return Math.Clamp(o, -max, max);
+    }
+
+    void Place(bool reposition = false)
     {
         bool full = t > 0;
-        if (full != wasFull || Width == 0 || double.IsNaN(Left))
+        if (reposition || full != wasFull || Width == 0 || double.IsNaN(Left))
         {
             wasFull = full;
             var sb = Forms.Screen.PrimaryScreen!.Bounds;
             Width = full ? BarW : HandleW;
             Height = full ? BarH : HandleH;
-            Left = sb.X / scale + (sb.Width / scale - Width) / 2;
+            Left = sb.X / scale + (sb.Width / scale - Width) / 2 + offset;
             Top = sb.Y / scale;
         }
         double e = 1 - Math.Pow(1 - t, 3);          // weich abbremsen
@@ -116,9 +153,9 @@ internal class QuickBar : Window
     {
         Native.GetCursorPos(out var p);
         var sb = Forms.Screen.PrimaryScreen!.Bounds;
-        double cx = sb.X + sb.Width / 2.0;
-        double w = (handleOnly ? HandleW : BarW) * scale / 2 + margin;
-        double h = (handleOnly ? 3 : BarH * scale) + margin;
+        double cx = sb.X + sb.Width / 2.0 + offset * scale;
+        double w = (handleOnly ? HandleW + 120 : BarW) * scale / 2 + margin;
+        double h = (handleOnly ? 4 : BarH * scale) + margin;
         return p.X >= cx - w && p.X <= cx + w && p.Y >= sb.Y - 5 && p.Y <= sb.Y + h;
     }
 
@@ -134,6 +171,8 @@ internal class QuickBar : Window
         if (h == IntPtr.Zero || !Native.GetWindowRect(h, out var r)) return false;
         var sb = Forms.Screen.PrimaryScreen!.Bounds;
         if (r.Left > sb.Left || r.Top > sb.Top || r.Right < sb.Right || r.Bottom < sb.Bottom) return false;
+        // Maximierte Fenster ragen ein paar Pixel über den Rand, haben aber eine Titelleiste: das ist kein Vollbild
+        if ((Native.GetWindowLong(h, -16) & 0x00C00000) != 0) return false;
         var cls = new System.Text.StringBuilder(64);
         GetClassName(h, cls, 64);
         var c = cls.ToString();
@@ -144,16 +183,13 @@ internal class QuickBar : Window
     {
         if (suspended) return;
         var now = DateTime.UtcNow;
-        if (!opening && t <= 0)
+        if (!opening)
         {
-            // Ausfahren verlangt kurzes Verweilen am Rand (verhindert Auslösen beim Fensterziehen)
-            if (CursorIn(0, true) && !LeftDown() && !ForegroundFullscreen())
-            {
-                if (sinceIn == DateTime.MaxValue) sinceIn = now;
-                else if ((now - sinceIn).TotalMilliseconds > 140) { opening = true; sinceIn = DateTime.MaxValue; }
-            }
-            else sinceIn = DateTime.MaxValue;
+            // Sofort ausfahren, auch mitten im Einfahren (nicht beim Ziehen mit gedrückter Maustaste und nicht über Vollbild-Programmen)
+            bool inZone = t > 0 ? CursorIn(14, false) : CursorIn(0, true);
+            if (inZone && !LeftDown() && !ForegroundFullscreen()) { opening = true; sinceOut = DateTime.MaxValue; }
         }
+        else if (dragging || pressed) sinceOut = DateTime.MaxValue;
         else if (opening)
         {
             if (CursorIn(14, false)) sinceOut = DateTime.MaxValue;
@@ -220,3 +256,4 @@ internal class QuickBar : Window
     public static UIElement IcRuler() => Icon(P("M2,8 H22 V16 H2 Z"), P("M6,8 V12 M10,8 V11 M14,8 V12 M18,8 V11"));
     public static UIElement IcGear() => new TextBlock { Text = "", FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 22, Foreground = Ink };
 }
+
