@@ -46,7 +46,7 @@ public partial class EditorWindow : Window
         this.settings = settings;
         bmp = image;
         // Schachbrettmuster hinter dem Bild wie in Photoshop: zeigt transparente Stellen an (wird nie mitgespeichert)
-        checker.Fill = checkerBrush;
+        UpdateChecker();
         Host.Children.Insert(0, checker);
         Art.Children.Add(baseImg);
         SetBitmap(bmp);
@@ -770,7 +770,7 @@ public partial class EditorWindow : Window
         {
             var rb = new RadioButton { Content = f.ToUpperInvariant(), GroupName = "fmt", IsChecked = Ext == f, ToolTip = "Format beim Speichern", Margin = new Thickness(2, 1, 2, 1) };
             var ff = f;
-            rb.Checked += (_, _) => { settings.ImageFormat = ff; settings.Save(); };
+            rb.Checked += (_, _) => { settings.ImageFormat = ff; settings.Save(); UpdateChecker(); };
             fmtBox.Children.Add(rb);
         }
         panels["Datei"].Children.Add(Group("Speichern",
@@ -901,6 +901,24 @@ public partial class EditorWindow : Window
     // Photoshop-Optik: weiße und hellgraue (#CCCCCC) Felder, 8 Bildschirmpixel groß
     readonly DrawingBrush checkerBrush = MakeChecker();
     readonly Rectangle checker = new() { IsHitTestVisible = false, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+
+    /// <summary>PNG/WebP: Schachbrett hinter transparenten Stellen. JPG/BMP: weiß, denn so wird beim Speichern aufgefüllt.</summary>
+    void UpdateChecker() => checker.Fill = IsPng ? checkerBrush : Brushes.White;
+
+    /// <summary>Transparente Stellen auf Weiß legen (Formate ohne Transparenz, sonst werden sie schwarz).</summary>
+    static BitmapSource FlattenOnWhite(BitmapSource src)
+    {
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, src.PixelWidth, src.PixelHeight));
+            dc.DrawImage(src, new Rect(0, 0, src.PixelWidth, src.PixelHeight));
+        }
+        var rtb = new RenderTargetBitmap(src.PixelWidth, src.PixelHeight, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        rtb.Freeze();
+        return rtb;
+    }
 
     static DrawingBrush MakeChecker()
     {
@@ -2793,7 +2811,10 @@ public partial class EditorWindow : Window
             return;
         }
         var enc = EncoderFor(path);
-        enc.Frames.Add(BitmapFrame.Create(Render()));
+        var rendered = Render();
+        var e2 = System.IO.Path.GetExtension(path).ToLowerInvariant();
+        if (e2 is ".jpg" or ".jpeg" or ".bmp") rendered = FlattenOnWhite(rendered);   // ohne Alpha: Transparenz wird weiß statt schwarz
+        enc.Frames.Add(BitmapFrame.Create(rendered));
         using var fs = File.Create(path);
         enc.Save(fs);
         saved = true;
