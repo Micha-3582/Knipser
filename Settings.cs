@@ -24,6 +24,8 @@ public class Settings
     public bool IncludeCursor { get; set; } = false;
     /// <summary>Pfeilspitze im Editor: 0 Klassisch, 1 Spitz, 2 Offen, 3 Modern (Standard), 4 Punkt.</summary>
     public int ArrowStyle { get; set; } = 3;
+    /// <summary>Pfeile mit Spitze an beiden Enden (Doppelpfeil, z. B. für Maße).</summary>
+    public bool ArrowBoth { get; set; } = false;
     /// <summary>Fester Bereich: Größe in Pixeln.</summary>
     public int FixedWidth { get; set; } = 800;
     public int FixedHeight { get; set; } = 600;
