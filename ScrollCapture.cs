@@ -19,13 +19,35 @@ internal static class ScrollCapture
     [DllImport("user32.dll")] static extern void mouse_event(uint flags, int dx, int dy, int data, int extra);
     const uint MOUSEEVENTF_WHEEL = 0x0800;
 
+    [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
+    const int VK_ESCAPE = 0x1B;
+
     public static int WheelDelay = 300;
+    static volatile bool cancelled;   // Esc gedrückt: Aufnahme mit dem bisherigen Stand beenden
     const int MaxFrames = 80;
     const int MaxHeight = 30000;
     const int Samples = 256;       // Spalten pro Zeile für den Vergleich
     const int Tol = 14;            // erlaubte Abweichung je Farbkanal
 
     public static async Task<BitmapSource?> Run(Drawing.Rectangle r)
+    {
+        cancelled = false;
+        GetAsyncKeyState(VK_ESCAPE);   // alten "gedrückt seit letztem Abruf"-Merker löschen
+        bool done = false;
+        // Esc wird global überwacht, denn das Fenster mit der zu scrollenden Seite hat den Fokus, nicht Knipser
+        _ = Task.Run(async () =>
+        {
+            while (!done)
+            {
+                if ((GetAsyncKeyState(VK_ESCAPE) & 0x8001) != 0) { cancelled = true; break; }
+                await Task.Delay(15);
+            }
+        });
+        try { return await RunCore(r); }
+        finally { done = true; }
+    }
+
+    static async Task<BitmapSource?> RunCore(Drawing.Rectangle r)
     {
         Log($"Start Bereich {r.Width}x{r.Height} bei {r.X},{r.Y}");
         SetCursorPos(r.X + r.Width / 2, r.Y + r.Height / 2);
@@ -44,6 +66,7 @@ internal static class ScrollCapture
 
         for (int i = 0; i < MaxFrames && totalRows < MaxHeight; i++)
         {
+            if (cancelled) { Log("Abbruch mit Esc"); break; }
             // Mausrad drehen und warten, bis die Seite (auch bei weichem Scrollen) still steht.
             // Hat sich nichts getan, bis zu dreimal nachlegen, bevor wir das Seitenende annehmen.
             byte[]? cur = null;
@@ -52,9 +75,10 @@ internal static class ScrollCapture
                 mouse_event(MOUSEEVENTF_WHEEL, 0, 0, -120 * 3, 0);
                 await Task.Delay(WheelDelay);
                 cur = await Settle(r, w, h);
-                if (!Similar(prev, cur)) break;
+                if (cancelled || !Similar(prev, cur)) break;
                 await Task.Delay(WheelDelay);
             }
+            if (cancelled) { Log("Abbruch mit Esc"); break; }   // halb gesetzte Aufnahme nicht mehr anhängen
             if (cur == null || Similar(prev, cur)) { Log($"Bild {i + 1}: keine Bewegung -> Ende"); break; }   // Ende der Seite
 
             int s = FindShift(prev, cur, w, h, lastShift > 0 ? lastShift : expected);
@@ -102,7 +126,7 @@ internal static class ScrollCapture
     static async Task<byte[]> Settle(Drawing.Rectangle r, int w, int h)
     {
         var a = Pixels(Capture.Grab(r), w, h);
-        for (int i = 0; i < 12; i++)
+        for (int i = 0; i < 12 && !cancelled; i++)
         {
             await Task.Delay(120);
             var b = Pixels(Capture.Grab(r), w, h);
