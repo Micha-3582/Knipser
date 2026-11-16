@@ -215,7 +215,7 @@ internal class QuickBar : Window
         barMove.Y = -(1 - e) * BarH;
         barScale.ScaleX = 0.6 + 0.4 * e;
         bar.Opacity = Math.Min(1, e * 1.6);
-        pill.Opacity = 1 - e;
+        pill.Opacity = t > 0 ? 0 : 1;   // Griff nur im eingefahrenen Zustand; beim Aus-/Einfahren übernimmt die Leiste
     }
 
     /// <summary>Liegt der Mauszeiger im (ggf. vergrößerten) Bereich der Leiste?</summary>
@@ -297,6 +297,13 @@ internal class QuickBar : Window
     void KickAnim()
     {
         if (anim.IsEnabled) return;
+        if (opening && t <= 0)
+        {
+            // Der Griff wird zuerst ausgeblendet und gezeichnet, erst dann wird das Fenster breit.
+            // Sonst zeigt Windows für einen Augenblick noch das alte (Griff-)Bild an der linken Kante des breiten Fensters.
+            pill.Opacity = 0;
+            anim.Interval = TimeSpan.FromMilliseconds(40);
+        }
         clock.Restart();
         anim.Start();
     }
@@ -304,7 +311,9 @@ internal class QuickBar : Window
     /// <summary>Läuft im Bildwiederholtakt des Monitors, daher flüssig.</summary>
     void Frame(object? sender, EventArgs e)
     {
+        anim.Interval = TimeSpan.FromMilliseconds(8);
         double dt = clock.Elapsed.TotalSeconds; clock.Restart();
+        if (dt > 0.03 && t <= 0 && opening) return;   // erster Takt nach der Wartezeit: Griff ist jetzt ausgeblendet gezeichnet, Animation startet im nächsten Takt
         dt = Math.Min(dt, 0.05);
         double target = opening ? 1 : 0;
         if (t == target) { anim.Stop(); return; }
