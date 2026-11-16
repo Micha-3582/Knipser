@@ -177,11 +177,12 @@ internal class QuickBar : Window
         if (!Native.GetWindowRect(hwnd, out var cur) || cur.Left < sb.Left || cur.Right > sb.Right || cur.Top < sb.Top || cur.Top > sb.Top + 50)
             Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, sb.X + sb.Width / 2, sb.Y, 0, 0, 0x0001 | Native.SWP_NOACTIVATE);   // SWP_NOSIZE
         scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        Width = full ? BarW : HandleW;
-        Height = full ? BarH : HandleH;
-        // 2) dann mittig (plus Verschiebung) ganz oben
-        int x = (int)Math.Round(sb.X + (sb.Width - Width * scale) / 2 + offset * scale);
-        Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, x, sb.Y, 0, 0, 0x0001 | Native.SWP_NOACTIVATE);
+        // 2) Größe UND Position in einem einzigen Aufruf setzen. Mit Width/Height zuerst schrumpfte das Fenster
+        //    kurz an der alten linken Kante und der blaue Griff blitzte einen Moment links auf.
+        double wd = full ? BarW : HandleW, ht = full ? BarH : HandleH;
+        int wpx = (int)Math.Round(wd * scale), hpx = (int)Math.Round(ht * scale);
+        int x = (int)Math.Round(sb.X + (sb.Width - wpx) / 2.0 + offset * scale);
+        Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, x, sb.Y, wpx, hpx, Native.SWP_NOACTIVATE);
         wasFull = full; placed = true;
     }
 
