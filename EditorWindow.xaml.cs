@@ -1119,7 +1119,7 @@ public partial class EditorWindow : Window
         }
         if (picking)
         {
-            if (SampleAt(e.GetPosition(Art)) is Color pc) SetColor(pc);
+            if (SampleAt(e.GetPosition(Art)) is Color pc) { if (cpWin != null) cpWin.SetNewColor(pc); else SetColor(pc); }   // bei offenem Farbwähler landet die Farbe dort (wie ein Klick ins Bild), sonst direkt
             EndPick();
             e.Handled = true;
             return;
