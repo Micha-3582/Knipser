@@ -168,6 +168,23 @@ public partial class EditorWindow : Window
         "",   // Ellipse (echtes Ellipse-Element)
     };
 
+    Path? rectPrev;
+
+    /// <summary>Symbol des Rahmen-Werkzeugs: zeigt immer die aktuell gewählte Form aus der Galerie.</summary>
+    UIElement BuildRectIcon()
+    {
+        rectPrev = (Path)Geo("M4,6 H20 V18 H4 Z");
+        UpdateRectIcon();
+        return WithCorner(rectPrev);
+    }
+
+    void UpdateRectIcon()
+    {
+        if (rectPrev == null) return;
+        int id = Math.Clamp(settings.RectShape, 0, FormIcons.Length - 1);
+        rectPrev.Data = Geometry.Parse(id == 0 ? "M4,6 H20 V18 H4 Z" : FormIcons[id]);   // Rechteck wie bisher, die übrigen aus der Galerie
+    }
+
     UIElement MakeFormShape()
     {
         int id = Math.Clamp(settings.RectShape, 0, FormNames.Length - 1);
@@ -205,7 +222,7 @@ public partial class EditorWindow : Window
             row.Children.Add(Geo(FormIcons[id]));
             row.Children.Add(new TextBlock { Text = FormNames[id], Foreground = Ink, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 10, 0), MinWidth = 150 });
             var b = new Button { Content = row, Style = (Style)FindResource("RibbonBtn"), HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(6, 3, 6, 3) };
-            b.Click += (_, _) => { settings.RectShape = id; settings.Save(); target.IsChecked = true; pop.IsOpen = false; };
+            b.Click += (_, _) => { settings.RectShape = id; settings.Save(); UpdateRectIcon(); target.IsChecked = true; pop.IsOpen = false; };
             panel.Children.Add(b);
         }
         pop.Child = new Border
@@ -810,7 +827,7 @@ public partial class EditorWindow : Window
         {
             ("Auswahl", Tool.Pointer, Geo("M6,3 L6,19 L10,15 L13,21 L15.5,20 L12.5,14 L18,14 Z", true)),
             ("Pfeil", Tool.Arrow, BuildArrowIcon()),
-            ("Rahmen", Tool.Rect, WithCorner(Geo("M4,6 H20 V18 H4 Z"))),
+            ("Rahmen", Tool.Rect, BuildRectIcon()),
             ("Linie", Tool.Line, Geo("M4,20 L20,4")),
             ("Stift", Tool.Pen, Geo("M3,17 C6,5 9,5 12,12 S18,19 21,7")),
             ("Marker", Tool.Marker, Glyph("\uE7E6")),
